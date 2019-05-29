@@ -17,8 +17,13 @@ import (
 	"golang.org/x/xerrors"
 )
 
-// ErrNoSuchKey is reported when requesting an unknown key slug.
-var ErrNoSuchKey = xerrors.New("no matching key")
+var (
+	// ErrNoSuchKey is reported when requesting an unknown key slug.
+	ErrNoSuchKey = xerrors.New("no matching key")
+
+	// ErrBadPassphrase is reported when a passphrase decrypt a key.
+	ErrBadPassphrase = xerrors.New("invalid passphrase")
+)
 
 const aesKeyBytes = 32 // for AES-256
 
@@ -49,11 +54,21 @@ func Load(r io.Reader, passphrase string) (*File, error) {
 	return &File{pb: kf, passphrase: passphrase}, nil
 }
 
+// Slugs returns a slice of the key slugs known to f.
+func (f *File) Slugs() []string {
+	var slugs []string
+	for _, key := range f.pb.Keys {
+		slugs = append(slugs, key.Slug)
+	}
+	return slugs
+}
+
 // Has reports whether f contains a key with the specified slug.
 func (f *File) Has(slug string) bool { return f.findKey(slug) != nil }
 
 // Get decrypts and returns the key with the specified slug.
 // It reports ErrNoSuchKey if no such key exists in f.
+// It reports ErrBadPassphrase if they key cannot be decrypted.
 func (f *File) Get(slug string) ([]byte, error) {
 	key := f.findKey(slug)
 	if key == nil {
@@ -69,7 +84,7 @@ func (f *File) Get(slug string) ([]byte, error) {
 	ctr.XORKeyStream(tmp, key.Data)
 	dec, err := snappy.Decode(nil, tmp)
 	if err != nil {
-		return nil, xerrors.Errorf("get %q decompress: %w", slug, err)
+		return nil, xerrors.Errorf("get %q: %w", slug, ErrBadPassphrase)
 	}
 
 	// Decode and return the secret.
