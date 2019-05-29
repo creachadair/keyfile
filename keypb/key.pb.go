@@ -23,7 +23,6 @@ const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 // Keyfile is the storage format for a key file. The keys in a file are
 // encrypted with AES-256 using a key derived from a passphrase using scrypt.
 type Keyfile struct {
-	// The keys i
 	KeySalt              []byte         `protobuf:"bytes,1,opt,name=key_salt,json=keySalt,proto3" json:"key_salt,omitempty"`
 	Keys                 []*Keyfile_Key `protobuf:"bytes,2,rep,name=keys,proto3" json:"keys,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}       `json:"-"`
