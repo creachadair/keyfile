@@ -1,3 +1,5 @@
+// Copyright (C) 2019 Michael J. Fromberger. All Rights Reserved.
+
 // Package keyfile provides an interface to read and write encryption keys and
 // other secrets in a persistent format protected by a passphrase.
 package keyfile
