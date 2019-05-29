@@ -14,14 +14,18 @@ message Keyfile {
   bytes key_salt = 1;    // salt for deriving a key from the passphrase
   repeated Key keys = 2; // encrypted keys
 
-  // A Key is stored as a wire-format Secret which has been compressed and
-  // encrypted in CTR mode. Each key has a slug that can be used to choose
-  // which key to decrypt.
+  // A Key is stored as a wire-format Secret which has been encrypted in CTR
+  // mode. Each key has a slug that can be used to choose which key to decrypt.
+  // Since key secrets are expected to be both short and random, they are not
+  // compressed before storage.
   message Key {
     string slug = 1; // descriptive slug for this key (non-secret)
-    bytes data = 2;  // encrypted, compressed Secret
+    bytes data = 2;  // encrypted Secret
     bytes init = 3;  // initialization vector
   }
 
-  message Secret { bytes secret = 1; }
+  message Secret {
+    bytes secret = 1; // the protected secret
+    uint32 check = 2; // checksum of secret bytes as a key verifier
+  }
 }

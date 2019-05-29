@@ -2,6 +2,10 @@
 
 // Package keyfile provides an interface to read and write encryption keys and
 // other secrets in a persistent format protected by a passphrase.
+//
+// Secrets are stored in a keypb.Keyfile protocol buffer message, inside which
+// each key is encrypted with AES-256 in CTR mode. The storage encryption key
+// is derived from a user passphrase using the scrypt algorithm.
 package keyfile
 
 import (
@@ -14,7 +18,6 @@ import (
 
 	"bitbucket.org/creachadair/keyfile/keypb"
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/snappy"
 	"golang.org/x/crypto/scrypt"
 	"golang.org/x/xerrors"
 )
@@ -77,22 +80,19 @@ func (f *File) Get(slug string) ([]byte, error) {
 		return nil, xerrors.Errorf("get %q: %w", slug, ErrNoSuchKey)
 	}
 
-	// Decrypt and decompress the key material.
+	// Decrypt the key wrapper.
 	ctr, err := f.fileCipher(aesKeyBytes, key.Init)
 	if err != nil {
 		return nil, xerrors.Errorf("get %q decrypt: %w", slug, err)
 	}
 	tmp := make([]byte, len(key.Data))
 	ctr.XORKeyStream(tmp, key.Data)
-	dec, err := snappy.Decode(nil, tmp)
-	if err != nil {
-		return nil, xerrors.Errorf("get %q: %w", slug, ErrBadPassphrase)
-	}
 
-	// Decode and return the secret.
+	// Decode and return the secret. If this fails, report that the passphrase
+	// was invalid.
 	var sec keypb.Keyfile_Secret
-	if err := proto.Unmarshal(dec, &sec); err != nil {
-		return nil, xerrors.Errorf("get %q: %w", slug, err)
+	if err := proto.Unmarshal(tmp, &sec); err != nil || sec.Check != checksum(sec.Secret) {
+		return nil, xerrors.Errorf("get %q: %w", slug, ErrBadPassphrase)
 	}
 	return sec.Secret, nil
 }
@@ -117,15 +117,16 @@ func (f *File) Set(slug string, secret []byte) error {
 		return xerrors.Errorf("set %q encrypt: %w", slug, err)
 	}
 
-	// Package, compress, and encrypt the secret.
+	// Package and encrypt the secret.
 	bits, err := proto.Marshal(&keypb.Keyfile_Secret{
 		Secret: secret,
+		Check:  checksum(secret),
 	})
 	if err != nil {
 		return xerrors.Errorf("set %q: %w", slug, err)
 	}
-	key.Data = snappy.Encode(nil, bits)
-	ctr.XORKeyStream(key.Data, key.Data)
+	ctr.XORKeyStream(bits, bits)
+	key.Data = bits
 
 	return nil
 }
@@ -201,4 +202,13 @@ func (f *File) fileCipher(n int, iv []byte) (cipher.Stream, error) {
 		return nil, err
 	}
 	return cipher.NewCTR(blk, iv), nil
+}
+
+// checksum returns a trivial verification checksum of data.
+func checksum(data []byte) uint32 {
+	var ck byte
+	for _, b := range data {
+		ck ^= b
+	}
+	return (uint32(len(data)) << 8) | uint32(ck)
 }
