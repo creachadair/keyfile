@@ -1,0 +1,25 @@
+// This file defines a storage format for an encrypted key file.  A key file is
+// symmetrically encrypted based on a passphrase.
+
+syntax = "proto3";
+
+package keypb;
+
+// Keyfile is the storage format for a key file. The keys in a file are
+// encrypted with AES-256 using a key derived from a passphrase using scrypt.
+message Keyfile {
+  // The keys i
+  bytes key_salt = 1;    // salt for deriving a key from the passphrase
+  repeated Key keys = 2; // encrypted keys
+
+  // A Key is stored as a wire-format Secret which has been compressed and
+  // encrypted in CTR mode. Each key has a slug that can be used to choose
+  // which key to decrypt.
+  message Key {
+    string slug = 1; // descriptive slug for this key (non-secret)
+    bytes data = 2;  // encrypted, compressed Secret
+    bytes init = 3;  // initialization vector
+  }
+
+  message Secret { bytes secret = 1; }
+}
