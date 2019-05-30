@@ -120,11 +120,6 @@ func (f *File) Set(slug, passphrase string, secret []byte) error {
 		fix(f.pb)
 	}
 
-	// Populate a fresh initialization vector for this key.
-	key.Init = make([]byte, aes.BlockSize)
-	if _, err := rand.Read(key.Init); err != nil {
-		return xerrors.Errorf("set %q: %w", slug, err)
-	}
 	ctr, err := keyCipher(passphrase, key)
 	if err != nil {
 		return xerrors.Errorf("set %q encrypt: %w", slug, err)
@@ -197,6 +192,17 @@ func keySalt(key *keypb.Keyfile_Key) ([]byte, error) {
 	return key.Salt, nil
 }
 
+// keyIV returns the key's initialization vector, creating it if necessary.
+func keyIV(key *keypb.Keyfile_Key) ([]byte, error) {
+	if len(key.Init) == 0 {
+		key.Init = make([]byte, aes.BlockSize)
+		if _, err := rand.Read(key.Init); err != nil {
+			return nil, err
+		}
+	}
+	return key.Init, nil
+}
+
 // keyCipher returns an CTR mode stream for the specified key and passphrase.
 func keyCipher(passphrase string, key *keypb.Keyfile_Key) (cipher.Stream, error) {
 	salt, err := keySalt(key)
@@ -207,11 +213,16 @@ func keyCipher(passphrase string, key *keypb.Keyfile_Key) (cipher.Stream, error)
 	if err != nil {
 		return nil, xerrors.Errorf("scrypt: %w", err)
 	}
+
+	iv, err := keyIV(key)
+	if err != nil {
+		return nil, xerrors.Errorf("initialization vector: %w", err)
+	}
 	blk, err := aes.NewCipher(ckey)
 	if err != nil {
 		return nil, err
 	}
-	return cipher.NewCTR(blk, key.Init), nil
+	return cipher.NewCTR(blk, iv), nil
 }
 
 // checksum returns a trivial verification checksum of data.
