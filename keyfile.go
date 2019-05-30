@@ -112,6 +112,20 @@ func (f *File) Get(slug, passphrase string) ([]byte, error) {
 	return sec, nil
 }
 
+// Random generates a random secret with the given length, encrypts it with the
+// passphrase, and stores it under the given slug. Any existing value for that
+// slug is replaced. The generated secret is returned.
+func (f *File) Random(slug, passphrase string, nbytes int) ([]byte, error) {
+	secret := make([]byte, nbytes)
+	if _, err := rand.Read(secret); err != nil {
+		return nil, err
+	}
+	if err := f.Set(slug, passphrase, secret); err != nil {
+		return nil, err
+	}
+	return secret, nil
+}
+
 // Set encrypts the secret with the passphrase and stores it under the given
 // slug. If the slug already exists, its contents are replaced; otherwise, a
 // new key is added.

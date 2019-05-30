@@ -42,7 +42,15 @@ func TestRoundTrip(t *testing.T) {
 		}
 	}
 
+	rnd, err := f.Random("random", passphrase, 48)
+	if err != nil {
+		t.Fatalf("Random(48) failed: %v", err)
+	} else if len(rnd) != 48 {
+		t.Errorf("Random(48): got length %d, want 48", len(rnd))
+	}
+
 	get("email", "", keyfile.ErrNoSuchKey)
+	get("random", string(rnd), nil)
 	set("email", "carebears")
 	set("website", "dogfart")
 
@@ -58,7 +66,7 @@ func TestRoundTrip(t *testing.T) {
 	set("bank account", "apoplexy1")
 
 	// Verify that key slugs come out in canonical order.
-	wantSlugs := []string{"bank account", "email", "website"}
+	wantSlugs := []string{"bank account", "email", "random", "website"}
 	if diff := cmp.Diff(wantSlugs, f.Slugs()); diff != "" {
 		t.Errorf("Wrong key slugs (-want, +got)\n%s", diff)
 	}
@@ -78,6 +86,7 @@ func TestRoundTrip(t *testing.T) {
 	get("email", "world is on fire", nil)
 	get("bank account", "apoplexy1", nil)
 	get("website", "cabbage tart", nil)
+	get("random", string(rnd), nil)
 
 	// Verify that serializing to JSON and back gives us back the same thing.
 	var json bytes.Buffer
@@ -95,6 +104,7 @@ func TestRoundTrip(t *testing.T) {
 	get("email", "world is on fire", nil)
 	get("bank account", "apoplexy1", nil)
 	get("website", "cabbage tart", nil)
+	get("random", string(rnd), nil)
 
 	// Reload the encoded keyfile with the wrong passphrase and verify that we
 	// get errors for each of the keys we request.
@@ -108,4 +118,5 @@ func TestRoundTrip(t *testing.T) {
 	get("email", "", keyfile.ErrBadPassphrase)
 	get("bank account", "", keyfile.ErrBadPassphrase)
 	get("website", "", keyfile.ErrBadPassphrase)
+	get("random", "", keyfile.ErrBadPassphrase)
 }
