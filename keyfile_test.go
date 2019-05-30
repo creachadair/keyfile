@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"bitbucket.org/creachadair/keyfile"
-	"bitbucket.org/creachadair/keyfile/keypb"
-	"github.com/golang/protobuf/proto"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/xerrors"
 )
@@ -57,23 +55,18 @@ func TestRoundTrip(t *testing.T) {
 	set("email", "world is on fire")
 	set("bank account", "apoplexy1")
 
-	var buf bytes.Buffer
-	if _, err := f.WriteTo(&buf); err != nil {
-		t.Fatalf("Writing keyfile: %v", err)
-	}
-
-	var kf keypb.Keyfile
-	if err := proto.Unmarshal(buf.Bytes(), &kf); err != nil {
-		t.Fatalf("Decoding keyfile: %v", err)
-	}
-
 	// Verify that key slugs come out in canonical order.
 	wantSlugs := []string{"bank account", "email", "website"}
 	if diff := cmp.Diff(wantSlugs, f.Slugs()); diff != "" {
 		t.Errorf("Wrong key slugs (-want, +got)\n%s", diff)
 	}
 
-	// Reload the encoded keyfile and check the outputs.
+	// Verify that we can write the bits out and read them back and still
+	// recover the expected values.
+	var buf bytes.Buffer
+	if _, err := f.WriteTo(&buf); err != nil {
+		t.Fatalf("Writing keyfile: %v", err)
+	}
 	if dec, err := keyfile.Load(bytes.NewReader(buf.Bytes()), "password"); err != nil {
 		t.Fatalf("Load failed: %v", err)
 	} else {
@@ -84,8 +77,25 @@ func TestRoundTrip(t *testing.T) {
 	get("bank account", "apoplexy1", nil)
 	get("website", "cabbage tart", nil)
 
+	// Verify that serializing to JSON and back gives us back the same thing.
+	var json bytes.Buffer
+	if err := f.WriteJSON(&json); err != nil {
+		t.Errorf("Writing JSON keyfile: %v", err)
+	}
+	t.Log("JSON:\n", json.String())
+
+	cmp, err := keyfile.LoadJSON(&json, "password")
+	if err != nil {
+		t.Fatalf("LoadJSON failed: %v", err)
+	}
+	f = cmp
+
+	get("email", "world is on fire", nil)
+	get("bank account", "apoplexy1", nil)
+	get("website", "cabbage tart", nil)
+
 	// Reload the encoded keyfile with the wrong passphrase and verify that we
-	// get errors.
+	// get errors for each of the keys we request.
 	if dec, err := keyfile.Load(bytes.NewReader(buf.Bytes()), "wrong"); err != nil {
 		t.Fatalf("Load failed: %v", err)
 	} else {

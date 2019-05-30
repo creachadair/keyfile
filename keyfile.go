@@ -17,6 +17,7 @@ import (
 	"sort"
 
 	"bitbucket.org/creachadair/keyfile/keypb"
+	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/crypto/scrypt"
 	"golang.org/x/xerrors"
@@ -44,6 +45,7 @@ func New(passphrase string) *File {
 }
 
 // Load loads a file encrypted with the given passphrase from r.
+// The input must be a wire-format keypb.Keyfile message.
 func Load(r io.Reader, passphrase string) (*File, error) {
 	bits, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -51,6 +53,17 @@ func Load(r io.Reader, passphrase string) (*File, error) {
 	}
 	kf := new(keypb.Keyfile)
 	if err := proto.Unmarshal(bits, kf); err != nil {
+		return nil, err
+	}
+	fix(kf)
+	return &File{pb: kf, passphrase: passphrase}, nil
+}
+
+// LoadJSON loads a file encrypted with the given passphrase from r.
+// The input must be a JSON-encoded keypb.KeyFile message.
+func LoadJSON(r io.Reader, passphrase string) (*File, error) {
+	kf := new(keypb.Keyfile)
+	if err := jsonpb.Unmarshal(r, kf); err != nil {
 		return nil, err
 	}
 	fix(kf)
@@ -103,6 +116,7 @@ func (f *File) Set(slug string, secret []byte) error {
 		// Create a new entry and stuff it into the collection.
 		key = &keypb.Keyfile_Key{Slug: slug}
 		f.pb.Keys = append(f.pb.Keys, key)
+		fix(f.pb)
 	}
 
 	// Populate a fresh initialization vector for this key.
@@ -150,6 +164,13 @@ func (f *File) WriteTo(w io.Writer) (int64, error) {
 	}
 	nw, err := w.Write(bits)
 	return int64(nw), err
+}
+
+// WriteJSON encodes f to w as JSON.
+func (f *File) WriteJSON(w io.Writer) error {
+	fix(f.pb)
+	var enc jsonpb.Marshaler
+	return enc.Marshal(w, f.pb)
 }
 
 // findKey returns the first key with the specified slug, or nil.
