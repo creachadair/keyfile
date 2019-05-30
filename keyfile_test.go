@@ -12,13 +12,13 @@ import (
 )
 
 func TestEmpty(t *testing.T) {
-	f := keyfile.New("password")
+	f := keyfile.New()
 
 	const slug = "anything"
 	if f.Has(slug) {
 		t.Errorf("Has(%q): got true, want false", slug)
 	}
-	if key, err := f.Get(slug); !xerrors.Is(err, keyfile.ErrNoSuchKey) {
+	if key, err := f.Get(slug, "password"); !xerrors.Is(err, keyfile.ErrNoSuchKey) {
 		t.Errorf("Get(%q): got %q, %v, want %v", slug, string(key), err, keyfile.ErrNoSuchKey)
 	}
 	if f.Remove(slug) {
@@ -27,15 +27,17 @@ func TestEmpty(t *testing.T) {
 }
 
 func TestRoundTrip(t *testing.T) {
-	f := keyfile.New("password")
+	var passphrase = "knucklebones"
+
+	f := keyfile.New()
 	get := func(slug, want string, werr error) {
-		bits, err := f.Get(slug)
+		bits, err := f.Get(slug, passphrase)
 		if got := string(bits); !xerrors.Is(err, werr) || got != want {
 			t.Errorf("Get(%q): got (%q, %v), want (%q, %v)", slug, got, err, want, werr)
 		}
 	}
 	set := func(slug, secret string) {
-		if err := f.Set(slug, []byte(secret)); err != nil {
+		if err := f.Set(slug, passphrase, []byte(secret)); err != nil {
 			t.Errorf("Set(%q, %q): unexpected error: %v", slug, secret, err)
 		}
 	}
@@ -67,7 +69,7 @@ func TestRoundTrip(t *testing.T) {
 	if _, err := f.WriteTo(&buf); err != nil {
 		t.Fatalf("Writing keyfile: %v", err)
 	}
-	if dec, err := keyfile.Load(bytes.NewReader(buf.Bytes()), "password"); err != nil {
+	if dec, err := keyfile.Load(bytes.NewReader(buf.Bytes())); err != nil {
 		t.Fatalf("Load failed: %v", err)
 	} else {
 		f = dec
@@ -84,7 +86,7 @@ func TestRoundTrip(t *testing.T) {
 	}
 	t.Log("JSON:\n", json.String())
 
-	cmp, err := keyfile.LoadJSON(&json, "password")
+	cmp, err := keyfile.LoadJSON(&json)
 	if err != nil {
 		t.Fatalf("LoadJSON failed: %v", err)
 	}
@@ -96,12 +98,13 @@ func TestRoundTrip(t *testing.T) {
 
 	// Reload the encoded keyfile with the wrong passphrase and verify that we
 	// get errors for each of the keys we request.
-	if dec, err := keyfile.Load(bytes.NewReader(buf.Bytes()), "wrong"); err != nil {
+	if dec, err := keyfile.Load(bytes.NewReader(buf.Bytes())); err != nil {
 		t.Fatalf("Load failed: %v", err)
 	} else {
 		f = dec
 	}
 
+	passphrase = "fly you fools"
 	get("email", "", keyfile.ErrBadPassphrase)
 	get("bank account", "", keyfile.ErrBadPassphrase)
 	get("website", "", keyfile.ErrBadPassphrase)

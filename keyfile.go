@@ -35,18 +35,15 @@ const aesKeyBytes = 32 // for AES-256
 
 // A File represents a collection of keys.
 type File struct {
-	pb         *keypb.Keyfile
-	passphrase string
+	pb *keypb.Keyfile
 }
 
 // New creates a new empty file encrypted with the specified passphrase.
-func New(passphrase string) *File {
-	return &File{pb: new(keypb.Keyfile), passphrase: passphrase}
-}
+func New() *File { return &File{pb: new(keypb.Keyfile)} }
 
 // Load loads a file encrypted with the given passphrase from r.
 // The input must be a wire-format keypb.Keyfile message.
-func Load(r io.Reader, passphrase string) (*File, error) {
+func Load(r io.Reader) (*File, error) {
 	bits, err := ioutil.ReadAll(r)
 	if err != nil {
 		return nil, err
@@ -56,18 +53,18 @@ func Load(r io.Reader, passphrase string) (*File, error) {
 		return nil, err
 	}
 	fix(kf)
-	return &File{pb: kf, passphrase: passphrase}, nil
+	return &File{pb: kf}, nil
 }
 
 // LoadJSON loads a file encrypted with the given passphrase from r.
 // The input must be a JSON-encoded keypb.KeyFile message.
-func LoadJSON(r io.Reader, passphrase string) (*File, error) {
+func LoadJSON(r io.Reader) (*File, error) {
 	kf := new(keypb.Keyfile)
 	if err := jsonpb.Unmarshal(r, kf); err != nil {
 		return nil, err
 	}
 	fix(kf)
-	return &File{pb: kf, passphrase: passphrase}, nil
+	return &File{pb: kf}, nil
 }
 
 // Slugs returns a slice of the key slugs known to f.
@@ -82,17 +79,17 @@ func (f *File) Slugs() []string {
 // Has reports whether f contains a key with the specified slug.
 func (f *File) Has(slug string) bool { return f.findKey(slug) != nil }
 
-// Get decrypts and returns the key with the specified slug.
-// It reports ErrNoSuchKey if no such key exists in f.
-// It reports ErrBadPassphrase if they key cannot be decrypted.
-func (f *File) Get(slug string) ([]byte, error) {
+// Get locates the key with the specified slug and decrypts it with the
+// passphrase.  It reports ErrNoSuchKey if no such key exists in f.  It reports
+// ErrBadPassphrase if they key cannot be decrypted.
+func (f *File) Get(slug, passphrase string) ([]byte, error) {
 	key := f.findKey(slug)
 	if key == nil {
 		return nil, xerrors.Errorf("get %q: %w", slug, ErrNoSuchKey)
 	}
 
 	// Decrypt the key wrapper.
-	ctr, err := f.fileCipher(aesKeyBytes, key.Init)
+	ctr, err := f.fileCipher(aesKeyBytes, passphrase, key.Init)
 	if err != nil {
 		return nil, xerrors.Errorf("get %q decrypt: %w", slug, err)
 	}
@@ -108,9 +105,10 @@ func (f *File) Get(slug string) ([]byte, error) {
 	return sec.Secret, nil
 }
 
-// Set stores the specified secret under the given slug. If the slug already
-// exists, its contents are replaced; otherwise, a new key is added.
-func (f *File) Set(slug string, secret []byte) error {
+// Set encrypts the secret with the passphrase and stores it under the given
+// slug. If the slug already exists, its contents are replaced; otherwise, a
+// new key is added.
+func (f *File) Set(slug, passphrase string, secret []byte) error {
 	key := f.findKey(slug)
 	if key == nil {
 		// Create a new entry and stuff it into the collection.
@@ -124,7 +122,7 @@ func (f *File) Set(slug string, secret []byte) error {
 	if _, err := rand.Read(key.Init); err != nil {
 		return xerrors.Errorf("set %q: %w", slug, err)
 	}
-	ctr, err := f.fileCipher(aesKeyBytes, key.Init)
+	ctr, err := f.fileCipher(aesKeyBytes, passphrase, key.Init)
 	if err != nil {
 		return xerrors.Errorf("set %q encrypt: %w", slug, err)
 	}
@@ -196,12 +194,12 @@ func (f *File) keySalt() ([]byte, error) {
 }
 
 // fileKey returns an n-byte encryption key derived from the passphase.
-func (f *File) fileKey(n int) ([]byte, error) {
+func (f *File) fileKey(n int, passphrase string) ([]byte, error) {
 	salt, err := f.keySalt()
 	if err != nil {
 		return nil, xerrors.Errorf("key salt: %w", err)
 	}
-	key, err := scrypt.Key([]byte(f.passphrase), salt, 32768, 8, 1, n)
+	key, err := scrypt.Key([]byte(passphrase), salt, 32768, 8, 1, n)
 	if err != nil {
 		return nil, xerrors.Errorf("scrypt: %w", err)
 	}
@@ -209,8 +207,8 @@ func (f *File) fileKey(n int) ([]byte, error) {
 }
 
 // fileCipher returns an CTR mode stream using the file's key.
-func (f *File) fileCipher(n int, iv []byte) (cipher.Stream, error) {
-	key, err := f.fileKey(n)
+func (f *File) fileCipher(n int, passphrase string, iv []byte) (cipher.Stream, error) {
+	key, err := f.fileKey(n, passphrase)
 	if err != nil {
 		return nil, err
 	}
