@@ -31,7 +31,10 @@ var (
 	ErrBadPassphrase = xerrors.New("invalid passphrase")
 )
 
-const aesKeyBytes = 32 // for AES-256
+const (
+	aesKeyBytes  = 32 // for AES-256
+	keySaltBytes = 16 // size of random salt for scrypt
+)
 
 // A File represents a collection of keys.
 type File struct {
@@ -89,7 +92,7 @@ func (f *File) Get(slug, passphrase string) ([]byte, error) {
 	}
 
 	// Decrypt the key wrapper.
-	ctr, err := f.fileCipher(aesKeyBytes, passphrase, key.Init)
+	ctr, err := keyCipher(passphrase, key)
 	if err != nil {
 		return nil, xerrors.Errorf("get %q decrypt: %w", slug, err)
 	}
@@ -122,7 +125,7 @@ func (f *File) Set(slug, passphrase string, secret []byte) error {
 	if _, err := rand.Read(key.Init); err != nil {
 		return xerrors.Errorf("set %q: %w", slug, err)
 	}
-	ctr, err := f.fileCipher(aesKeyBytes, passphrase, key.Init)
+	ctr, err := keyCipher(passphrase, key)
 	if err != nil {
 		return xerrors.Errorf("set %q encrypt: %w", slug, err)
 	}
@@ -181,42 +184,34 @@ func (f *File) findKey(slug string) *keypb.Keyfile_Key {
 	return nil
 }
 
-// keySalt returns the passphrase key salt, creating it if necessary.
-func (f *File) keySalt() ([]byte, error) {
-	if len(f.pb.KeySalt) == 0 {
-		var buf [8]byte
+// keySalt returns the passphrase key salt, creating it if necessary.  This can
+// only fail if random generation fails.
+func keySalt(key *keypb.Keyfile_Key) ([]byte, error) {
+	if len(key.Salt) == 0 {
+		var buf [keySaltBytes]byte
 		if _, err := rand.Read(buf[:]); err != nil {
 			return nil, err
 		}
-		f.pb.KeySalt = buf[:]
+		key.Salt = buf[:]
 	}
-	return f.pb.KeySalt, nil
+	return key.Salt, nil
 }
 
-// fileKey returns an n-byte encryption key derived from the passphase.
-func (f *File) fileKey(n int, passphrase string) ([]byte, error) {
-	salt, err := f.keySalt()
+// keyCipher returns an CTR mode stream for the specified key and passphrase.
+func keyCipher(passphrase string, key *keypb.Keyfile_Key) (cipher.Stream, error) {
+	salt, err := keySalt(key)
 	if err != nil {
 		return nil, xerrors.Errorf("key salt: %w", err)
 	}
-	key, err := scrypt.Key([]byte(passphrase), salt, 32768, 8, 1, n)
+	ckey, err := scrypt.Key([]byte(passphrase), salt, 32768, 8, 1, aesKeyBytes)
 	if err != nil {
 		return nil, xerrors.Errorf("scrypt: %w", err)
 	}
-	return key, nil
-}
-
-// fileCipher returns an CTR mode stream using the file's key.
-func (f *File) fileCipher(n int, passphrase string, iv []byte) (cipher.Stream, error) {
-	key, err := f.fileKey(n, passphrase)
+	blk, err := aes.NewCipher(ckey)
 	if err != nil {
 		return nil, err
 	}
-	blk, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	return cipher.NewCTR(blk, iv), nil
+	return cipher.NewCTR(blk, key.Init), nil
 }
 
 // checksum returns a trivial verification checksum of data.
