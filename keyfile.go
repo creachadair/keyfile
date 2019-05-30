@@ -1,7 +1,9 @@
 // Copyright (C) 2019 Michael J. Fromberger. All Rights Reserved.
 
 // Package keyfile provides an interface to read and write encryption keys and
-// other secrets in a persistent format protected by a passphrase.
+// other secrets in a persistent format protected by a passphrase. Each secret
+// is labelled with non-secret slug string that can be used as a handle to
+// identify the secret.
 //
 // Secrets are stored in a keypb.Keyfile protocol buffer message, inside which
 // each key is encrypted with AES-256 in CTR mode. The storage encryption key
@@ -62,7 +64,7 @@ func Load(r io.Reader) (*File, error) {
 }
 
 // LoadJSON loads a file encrypted with the given passphrase from r.
-// The input must be a JSON-encoded keypb.KeyFile message.
+// The input must be a JSON-encoded keypb.Keyfile message.
 func LoadJSON(r io.Reader) (*File, error) {
 	kf := new(keypb.Keyfile)
 	if err := jsonpb.Unmarshal(r, kf); err != nil {
