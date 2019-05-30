@@ -53,9 +53,7 @@ func Load(r io.Reader, passphrase string) (*File, error) {
 	if err := proto.Unmarshal(bits, kf); err != nil {
 		return nil, err
 	}
-	sort.Slice(kf.Keys, func(i, j int) bool {
-		return kf.Keys[i].Slug < kf.Keys[j].Slug
-	})
+	fix(kf)
 	return &File{pb: kf, passphrase: passphrase}, nil
 }
 
@@ -145,9 +143,7 @@ func (f *File) Remove(slug string) bool {
 
 // WriteTo encodes f to the specified w.
 func (f *File) WriteTo(w io.Writer) (int64, error) {
-	sort.Slice(f.pb.Keys, func(i, j int) bool {
-		return f.pb.Keys[i].Slug < f.pb.Keys[j].Slug
-	})
+	fix(f.pb)
 	bits, err := proto.Marshal(f.pb)
 	if err != nil {
 		return 0, err
@@ -211,4 +207,11 @@ func checksum(data []byte) uint32 {
 		ck ^= b
 	}
 	return (uint32(len(data)) << 8) | uint32(ck)
+}
+
+// fix ensures the keys of pb are sorted by slug.
+func fix(pb *keypb.Keyfile) {
+	sort.Slice(pb.Keys, func(i, j int) bool {
+		return pb.Keys[i].Slug < pb.Keys[j].Slug
+	})
 }
