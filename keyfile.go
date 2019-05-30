@@ -12,6 +12,8 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/binary"
+	"hash/crc32"
 	"io"
 	"io/ioutil"
 	"sort"
@@ -101,11 +103,11 @@ func (f *File) Get(slug, passphrase string) ([]byte, error) {
 
 	// Decode and return the secret. If this fails, report that the passphrase
 	// was invalid.
-	var sec keypb.Keyfile_Secret
-	if err := proto.Unmarshal(tmp, &sec); err != nil || sec.Check != checksum(sec.Secret) {
-		return nil, xerrors.Errorf("get %q: %w", slug, ErrBadPassphrase)
+	sec, err := checkKey(tmp)
+	if err != nil {
+		return nil, xerrors.Errorf("get %q: %w", slug, err)
 	}
-	return sec.Secret, nil
+	return sec, nil
 }
 
 // Set encrypts the secret with the passphrase and stores it under the given
@@ -126,15 +128,11 @@ func (f *File) Set(slug, passphrase string, secret []byte) error {
 	}
 
 	// Package and encrypt the secret.
-	bits, err := proto.Marshal(&keypb.Keyfile_Secret{
-		Secret: secret,
-		Check:  checksum(secret),
-	})
-	if err != nil {
-		return xerrors.Errorf("set %q: %w", slug, err)
-	}
-	ctr.XORKeyStream(bits, bits)
-	key.Data = bits
+	pkg := make([]byte, len(secret)+4) // +4 for checksum
+	copy(pkg[4:], secret)
+	binary.BigEndian.PutUint32(pkg, crc32.ChecksumIEEE(secret))
+	ctr.XORKeyStream(pkg, pkg)
+	key.Data = pkg
 
 	return nil
 }
@@ -225,13 +223,15 @@ func keyCipher(passphrase string, key *keypb.Keyfile_Key) (cipher.Stream, error)
 	return cipher.NewCTR(blk, iv), nil
 }
 
-// checksum returns a trivial verification checksum of data.
-func checksum(data []byte) uint32 {
-	var ck byte
-	for _, b := range data {
-		ck ^= b
+// checkKey decodes a decrypted key wrapper and performs sanity checks.  On
+// success it returns the payload; otherwise ErrBadPassphrase.
+func checkKey(data []byte) ([]byte, error) {
+	got := binary.BigEndian.Uint32(data)
+	want := crc32.ChecksumIEEE(data[4:])
+	if got != want {
+		return nil, ErrBadPassphrase
 	}
-	return (uint32(len(data)) << 8) | uint32(ck)
+	return data[4:], nil
 }
 
 // fix ensures the keys of pb are sorted by slug.

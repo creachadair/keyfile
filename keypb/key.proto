@@ -13,19 +13,19 @@ message Keyfile {
 
   repeated Key keys = 1; // encrypted keys
 
-  // A Key is stored as a wire-format Secret which has been encrypted in CTR
+  // A Key is stored as an array of bytes that has been encrypted in CTR
   // mode. Each key has a slug that can be used to choose which key to decrypt.
   // Since key secrets are expected to be both short and random, they are not
   // compressed before storage.
   message Key {
     string slug = 1; // descriptive slug for this key (non-secret)
-    bytes data = 2;  // encrypted Secret
+    bytes data = 2;  // encrypted secret (see below)
     bytes init = 3;  // initialization vector
     bytes salt = 4;  // key generation salt
   }
 
-  message Secret {
-    bytes secret = 1; // the protected secret
-    uint32 check = 2; // checksum of secret bytes as a key verifier
-  }
+  // The format of the input data prior to encryption is:
+  //   | 4-byte CRC (IEEE) | input data ... |
+  //
+  // The CRC is stored in network byte order.
 }
