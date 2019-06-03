@@ -26,6 +26,41 @@ func TestEmpty(t *testing.T) {
 	}
 }
 
+func TestCloneProto(t *testing.T) {
+	// Set up f1 with some random key material.
+	f1 := keyfile.New()
+	k1, err := f1.Random("foo", "whatever", 8)
+	if err != nil {
+		t.Fatalf("Random(8) failed: %v", err)
+	}
+
+	// Set up f2 as a clone of f1.
+	f2 := keyfile.Clone(f1.Proto())
+
+	// Remove foo from f1 and verify that it is gone.
+	f1.Remove("foo")
+	if got, err := f1.Get("foo", "whatever"); !xerrors.Is(err, keyfile.ErrNoSuchKey) {
+		t.Errorf("f1.Get(foo): got (%q, %v), want (nil, %v)", string(got), err, keyfile.ErrNoSuchKey)
+	}
+
+	// Verify that f2 still has the key removed from f1.
+	if got, err := f2.Get("foo", "whatever"); err != nil {
+		t.Errorf("f2.Get(foo) failed: %v", err)
+	} else if !bytes.Equal(got, k1) {
+		t.Errorf("f2.Get(foo): got %q, want %q", string(got), string(k1))
+	}
+
+	// Verify that diddling the copy doesn't affect the original.
+	p2 := f2.Proto()
+	p2.Keys = nil // buh-bye
+
+	if got, err := f2.Get("foo", "whatever"); err != nil {
+		t.Errorf("f2.Get(foo) failed: %v", err)
+	} else if !bytes.Equal(got, k1) {
+		t.Errorf("f2.Get(foo): got %q, want %q", string(got), string(k1))
+	}
+}
+
 func TestRoundTrip(t *testing.T) {
 	var passphrase = "knucklebones"
 

@@ -48,6 +48,10 @@ type File struct {
 // New creates a new empty file encrypted with the specified passphrase.
 func New() *File { return &File{pb: new(keypb.Keyfile)} }
 
+// Clone creates a file that encapsulates a deep copy of m.  Changes to m do
+// not affect the file and vice versa.
+func Clone(m *keypb.Keyfile) *File { return &File{pb: proto.Clone(m).(*keypb.Keyfile)} }
+
 // Load loads a file encrypted with the given passphrase from r.
 // The input must be a wire-format keypb.Keyfile message.
 func Load(r io.Reader) (*File, error) {
@@ -164,6 +168,10 @@ func (f *File) Remove(slug string) bool {
 	}
 	return false
 }
+
+// Proto returns a keypb.Keyfile message representing the current state of f.
+// Subsequent changes to f do not affect the message, nor vice versa.
+func (f *File) Proto() *keypb.Keyfile { return proto.Clone(f.pb).(*keypb.Keyfile) }
 
 // WriteTo encodes f to the specified w.
 func (f *File) WriteTo(w io.Writer) (int64, error) {
