@@ -20,7 +20,7 @@ import (
 	"io/ioutil"
 	"sort"
 
-	"bitbucket.org/creachadair/keyfile/keypb"
+	"github.com/creachadair/keyfile/keypb"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/crypto/scrypt"

@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"testing"
 
-	"bitbucket.org/creachadair/keyfile"
+	"github.com/creachadair/keyfile"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/xerrors"
 )

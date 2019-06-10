@@ -1,8 +1,8 @@
 # keyfile
 
-http://godoc.org/bitbucket.org/creachadair/keyfile
+http://godoc.org/github.com/creachadair/keyfile
 
-[![Go Report Card](https://goreportcard.com/badge/bitbucket.org/creachadair/keyfile)](https://goreportcard.com/report/bitbucket.org/creachadair/keyfile)
+[![Go Report Card](https://goreportcard.com/badge/github.com/creachadair/keyfile)](https://goreportcard.com/report/github.com/creachadair/keyfile)
 
 The `keyfile` package provides an interface to read and write encryption keys
 and other sensitive secrets in a persistent format protected by a passphrase.
