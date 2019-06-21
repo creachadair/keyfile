@@ -140,6 +140,10 @@ func (f *File) Set(slug, passphrase string, secret []byte) error {
 		key = &keypb.Keyfile_Key{Slug: slug}
 		f.pb.Keys = append(f.pb.Keys, key)
 		fix(f.pb)
+	} else {
+		// Generate a fresh IV and salt for this existing key.
+		key.Init = nil
+		key.Salt = nil
 	}
 
 	ctr, err := keyCipher(passphrase, key)
