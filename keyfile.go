@@ -15,6 +15,8 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -24,15 +26,14 @@ import (
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/crypto/scrypt"
-	"golang.org/x/xerrors"
 )
 
 var (
 	// ErrNoSuchKey is reported when requesting an unknown key slug.
-	ErrNoSuchKey = xerrors.New("no matching key")
+	ErrNoSuchKey = errors.New("no matching key")
 
 	// ErrBadPassphrase is reported when a passphrase decrypt a key.
-	ErrBadPassphrase = xerrors.New("invalid passphrase")
+	ErrBadPassphrase = errors.New("invalid passphrase")
 )
 
 const (
@@ -96,13 +97,13 @@ func (f *File) Has(slug string) bool { return f.findKey(slug) != nil }
 func (f *File) Get(slug, passphrase string) ([]byte, error) {
 	key := f.findKey(slug)
 	if key == nil {
-		return nil, xerrors.Errorf("get %q: %w", slug, ErrNoSuchKey)
+		return nil, fmt.Errorf("get %q: %w", slug, ErrNoSuchKey)
 	}
 
 	// Decrypt the key wrapper.
 	ctr, err := keyCipher(passphrase, key)
 	if err != nil {
-		return nil, xerrors.Errorf("get %q decrypt: %w", slug, err)
+		return nil, fmt.Errorf("get %q decrypt: %w", slug, err)
 	}
 	tmp := make([]byte, len(key.Data))
 	ctr.XORKeyStream(tmp, key.Data)
@@ -111,7 +112,7 @@ func (f *File) Get(slug, passphrase string) ([]byte, error) {
 	// was invalid.
 	sec, err := checkKey(tmp)
 	if err != nil {
-		return nil, xerrors.Errorf("get %q: %w", slug, err)
+		return nil, fmt.Errorf("get %q: %w", slug, err)
 	}
 	return sec, nil
 }
@@ -148,7 +149,7 @@ func (f *File) Set(slug, passphrase string, secret []byte) error {
 
 	ctr, err := keyCipher(passphrase, key)
 	if err != nil {
-		return xerrors.Errorf("set %q encrypt: %w", slug, err)
+		return fmt.Errorf("set %q encrypt: %w", slug, err)
 	}
 
 	// Package and encrypt the secret.
@@ -233,16 +234,16 @@ func keyIV(key *keypb.Keyfile_Key) ([]byte, error) {
 func keyCipher(passphrase string, key *keypb.Keyfile_Key) (cipher.Stream, error) {
 	salt, err := keySalt(key)
 	if err != nil {
-		return nil, xerrors.Errorf("key salt: %w", err)
+		return nil, fmt.Errorf("key salt: %w", err)
 	}
 	ckey, err := scrypt.Key([]byte(passphrase), salt, 32768, 8, 1, aesKeyBytes)
 	if err != nil {
-		return nil, xerrors.Errorf("scrypt: %w", err)
+		return nil, fmt.Errorf("scrypt: %w", err)
 	}
 
 	iv, err := keyIV(key)
 	if err != nil {
-		return nil, xerrors.Errorf("initialization vector: %w", err)
+		return nil, fmt.Errorf("initialization vector: %w", err)
 	}
 	blk, err := aes.NewCipher(ckey)
 	if err != nil {

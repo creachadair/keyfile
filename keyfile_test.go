@@ -4,11 +4,11 @@ package keyfile_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/creachadair/keyfile"
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/xerrors"
 )
 
 func TestEmpty(t *testing.T) {
@@ -18,7 +18,7 @@ func TestEmpty(t *testing.T) {
 	if f.Has(slug) {
 		t.Errorf("Has(%q): got true, want false", slug)
 	}
-	if key, err := f.Get(slug, "password"); !xerrors.Is(err, keyfile.ErrNoSuchKey) {
+	if key, err := f.Get(slug, "password"); !errors.Is(err, keyfile.ErrNoSuchKey) {
 		t.Errorf("Get(%q): got %q, %v, want %v", slug, string(key), err, keyfile.ErrNoSuchKey)
 	}
 	if f.Remove(slug) {
@@ -39,7 +39,7 @@ func TestCloneProto(t *testing.T) {
 
 	// Remove foo from f1 and verify that it is gone.
 	f1.Remove("foo")
-	if got, err := f1.Get("foo", "whatever"); !xerrors.Is(err, keyfile.ErrNoSuchKey) {
+	if got, err := f1.Get("foo", "whatever"); !errors.Is(err, keyfile.ErrNoSuchKey) {
 		t.Errorf("f1.Get(foo): got (%q, %v), want (nil, %v)", string(got), err, keyfile.ErrNoSuchKey)
 	}
 
@@ -67,7 +67,7 @@ func TestRoundTrip(t *testing.T) {
 	f := keyfile.New()
 	get := func(slug, want string, werr error) {
 		bits, err := f.Get(slug, passphrase)
-		if got := string(bits); !xerrors.Is(err, werr) || got != want {
+		if got := string(bits); !errors.Is(err, werr) || got != want {
 			t.Errorf("Get(%q): got (%q, %v), want (%q, %v)", slug, got, err, want, werr)
 		}
 	}
