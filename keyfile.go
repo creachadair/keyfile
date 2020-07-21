@@ -23,9 +23,9 @@ import (
 	"sort"
 
 	"github.com/creachadair/keyfile/keypb"
-	"github.com/golang/protobuf/jsonpb"
-	"github.com/golang/protobuf/proto"
 	"golang.org/x/crypto/scrypt"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -72,7 +72,11 @@ func Load(r io.Reader) (*File, error) {
 // The input must be a JSON-encoded keypb.Keyfile message.
 func LoadJSON(r io.Reader) (*File, error) {
 	kf := new(keypb.Keyfile)
-	if err := jsonpb.Unmarshal(r, kf); err != nil {
+	bits, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	if err := protojson.Unmarshal(bits, kf); err != nil {
 		return nil, err
 	}
 	fix(kf)
@@ -192,8 +196,12 @@ func (f *File) WriteTo(w io.Writer) (int64, error) {
 // WriteJSON encodes f to w as JSON.
 func (f *File) WriteJSON(w io.Writer) error {
 	fix(f.pb)
-	var enc jsonpb.Marshaler
-	return enc.Marshal(w, f.pb)
+	bits, err := protojson.Marshal(f.pb)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(bits)
+	return err
 }
 
 // findKey returns the first key with the specified slug, or nil.
