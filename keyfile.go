@@ -1,12 +1,10 @@
 // Copyright (C) 2019 Michael J. Fromberger. All Rights Reserved.
 
-// Package keyfile provides an interface to read and write encryption keys and
-// other secrets in a persistent format protected by a passphrase. Each secret
-// is labelled with non-secret slug string that can be used as a handle to
-// identify the secret.
+// Package keyfile provides an interface to read and write secret keys in a
+// persistent format protected by a passphrase.
 //
-// Secrets are stored in a keypb.Keyfile protocol buffer message, inside which
-// each key is encrypted with AES-256 in CTR mode. The storage encryption key
+// Each secret is stored in a keypb.Keyfile protocol buffer message, inside
+// which the secret is encrypted with AES-256 in CTR mode. The encryption key
 // is derived from a user passphrase using the scrypt algorithm.
 package keyfile
 
@@ -20,20 +18,18 @@ import (
 	"hash/crc32"
 	"io"
 	"io/ioutil"
-	"sort"
 
 	"github.com/creachadair/keyfile/keypb"
 	"golang.org/x/crypto/scrypt"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
 var (
-	// ErrNoSuchKey is reported when requesting an unknown key slug.
-	ErrNoSuchKey = errors.New("no matching key")
-
 	// ErrBadPassphrase is reported when a passphrase decrypt a key.
 	ErrBadPassphrase = errors.New("invalid passphrase")
+
+	// ErrNoKey is reported by Get when the keyfile has no key.
+	ErrNoKey = errors.New("no key is present")
 )
 
 const (
@@ -41,20 +37,15 @@ const (
 	keySaltBytes = 16 // size of random salt for scrypt
 )
 
-// A File represents a collection of keys.
+// A File represents a keyfile.
 type File struct {
-	pb *keypb.Keyfile
+	*keypb.Keyfile
 }
 
-// New creates a new empty file encrypted with the specified passphrase.
-func New() *File { return &File{pb: new(keypb.Keyfile)} }
+// New creates a new empty keyfile.
+func New() *File { return &File{Keyfile: new(keypb.Keyfile)} }
 
-// Clone creates a file that encapsulates a deep copy of m.  Changes to m do
-// not affect the file and vice versa.
-func Clone(m *keypb.Keyfile) *File { return &File{pb: proto.Clone(m).(*keypb.Keyfile)} }
-
-// Load loads a file encrypted with the given passphrase from r.
-// The input must be a wire-format keypb.Keyfile message.
+// Load loads a wire-format Keyfile protobuf message from r
 func Load(r io.Reader) (*File, error) {
 	bits, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -64,96 +55,58 @@ func Load(r io.Reader) (*File, error) {
 	if err := proto.Unmarshal(bits, kf); err != nil {
 		return nil, err
 	}
-	fix(kf)
-	return &File{pb: kf}, nil
+	return &File{Keyfile: kf}, nil
 }
 
-// LoadJSON loads a file encrypted with the given passphrase from r.
-// The input must be a JSON-encoded keypb.Keyfile message.
-func LoadJSON(r io.Reader) (*File, error) {
-	kf := new(keypb.Keyfile)
-	bits, err := ioutil.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	if err := protojson.Unmarshal(bits, kf); err != nil {
-		return nil, err
-	}
-	fix(kf)
-	return &File{pb: kf}, nil
-}
-
-// Slugs returns a slice of the key slugs known to f.
-func (f *File) Slugs() []string {
-	var slugs []string
-	for _, key := range f.pb.Keys {
-		slugs = append(slugs, key.Slug)
-	}
-	return slugs
-}
-
-// Has reports whether f contains a key with the specified slug.
-func (f *File) Has(slug string) bool { return f.findKey(slug) != nil }
-
-// Get locates the key with the specified slug and decrypts it with the
-// passphrase.  It reports ErrNoSuchKey if no such key exists in f.  It reports
-// ErrBadPassphrase if they key cannot be decrypted.
-func (f *File) Get(slug, passphrase string) ([]byte, error) {
-	key := f.findKey(slug)
-	if key == nil {
-		return nil, fmt.Errorf("get %q: %w", slug, ErrNoSuchKey)
+// Get decrypts and returns the key from f using the given passphrase.
+// It returns ErrBadPassphrase if the key cannot be decrypted.
+// It returns ErrNoKey if f is empty.
+func (f *File) Get(passphrase string) ([]byte, error) {
+	if f.Key == nil || len(f.Key.Data) == 0 {
+		return nil, ErrNoKey
 	}
 
 	// Decrypt the key wrapper.
-	ctr, err := keyCipher(passphrase, key)
+	ctr, err := keyCipher(passphrase, f.Key)
 	if err != nil {
-		return nil, fmt.Errorf("get %q decrypt: %w", slug, err)
+		return nil, fmt.Errorf("keyfile decrypt: %w", err)
 	}
-	tmp := make([]byte, len(key.Data))
-	ctr.XORKeyStream(tmp, key.Data)
+	tmp := make([]byte, len(f.Key.Data))
+	ctr.XORKeyStream(tmp, f.Key.Data)
 
 	// Decode and return the secret. If this fails, report that the passphrase
 	// was invalid.
 	sec, err := checkKey(tmp)
 	if err != nil {
-		return nil, fmt.Errorf("get %q: %w", slug, err)
+		return nil, fmt.Errorf("keyfile verify: %w", err)
 	}
 	return sec, nil
 }
 
 // Random generates a random secret with the given length, encrypts it with the
-// passphrase, and stores it under the given slug. Any existing value for that
-// slug is replaced. The generated secret is returned.
-func (f *File) Random(slug, passphrase string, nbytes int) ([]byte, error) {
+// passphrase, and stores it in f, replacing any previous data. The generated
+// secret is returned. It is an error if nbytes <= 0.
+func (f *File) Random(passphrase string, nbytes int) ([]byte, error) {
+	if nbytes <= 0 {
+		return nil, errors.New("invalid secret size (must be positive)")
+	}
 	secret := make([]byte, nbytes)
 	if _, err := rand.Read(secret); err != nil {
 		return nil, err
 	}
-	if err := f.Set(slug, passphrase, secret); err != nil {
+	if err := f.Set(passphrase, secret); err != nil {
 		return nil, err
 	}
 	return secret, nil
 }
 
-// Set encrypts the secret with the passphrase and stores it under the given
-// slug. If the slug already exists, its contents are replaced; otherwise, a
-// new key is added.
-func (f *File) Set(slug, passphrase string, secret []byte) error {
-	key := f.findKey(slug)
-	if key == nil {
-		// Create a new entry and stuff it into the collection.
-		key = &keypb.Keyfile_Key{Slug: slug}
-		f.pb.Keys = append(f.pb.Keys, key)
-		fix(f.pb)
-	} else {
-		// Generate a fresh IV and salt for this existing key.
-		key.Init = nil
-		key.Salt = nil
-	}
-
+// Set encrypts the secret with the passphrase and stores it in f, replacing
+// any previous data.
+func (f *File) Set(passphrase string, secret []byte) error {
+	key := new(keypb.Keyfile_Key)
 	ctr, err := keyCipher(passphrase, key)
 	if err != nil {
-		return fmt.Errorf("set %q encrypt: %w", slug, err)
+		return fmt.Errorf("keyfile encrypt: %w", err)
 	}
 
 	// Package and encrypt the secret.
@@ -162,56 +115,18 @@ func (f *File) Set(slug, passphrase string, secret []byte) error {
 	binary.BigEndian.PutUint32(pkg, crc32.ChecksumIEEE(secret))
 	ctr.XORKeyStream(pkg, pkg)
 	key.Data = pkg
-
+	f.Key = key
 	return nil
 }
 
-// Remove removes the key associated with the given slug if it is present, and
-// reports whether anything was removed.
-func (f *File) Remove(slug string) bool {
-	for i, key := range f.pb.Keys {
-		if key.Slug == slug {
-			f.pb.Keys = append(f.pb.Keys[:i], f.pb.Keys[i+1:]...)
-			return true
-		}
-	}
-	return false
-}
-
-// Proto returns a keypb.Keyfile message representing the current state of f.
-// Subsequent changes to f do not affect the message, nor vice versa.
-func (f *File) Proto() *keypb.Keyfile { return proto.Clone(f.pb).(*keypb.Keyfile) }
-
-// WriteTo encodes f to the specified w.
+// WriteTo encodes f to the specified w in protobuf wire format.
 func (f *File) WriteTo(w io.Writer) (int64, error) {
-	fix(f.pb)
-	bits, err := proto.Marshal(f.pb)
+	bits, err := proto.Marshal(f.Keyfile)
 	if err != nil {
 		return 0, err
 	}
 	nw, err := w.Write(bits)
 	return int64(nw), err
-}
-
-// WriteJSON encodes f to w as JSON.
-func (f *File) WriteJSON(w io.Writer) error {
-	fix(f.pb)
-	bits, err := protojson.Marshal(f.pb)
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(bits)
-	return err
-}
-
-// findKey returns the first key with the specified slug, or nil.
-func (f *File) findKey(slug string) *keypb.Keyfile_Key {
-	for _, key := range f.pb.Keys {
-		if key.Slug == slug {
-			return key
-		}
-	}
-	return nil
 }
 
 // keySalt returns the passphrase key salt, creating it if necessary.  This can
@@ -269,11 +184,4 @@ func checkKey(data []byte) ([]byte, error) {
 		return nil, ErrBadPassphrase
 	}
 	return data[4:], nil
-}
-
-// fix ensures the keys of pb are sorted by slug.
-func fix(pb *keypb.Keyfile) {
-	sort.Slice(pb.Keys, func(i, j int) bool {
-		return pb.Keys[i].Slug < pb.Keys[j].Slug
-	})
 }
