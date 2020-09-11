@@ -3,7 +3,9 @@
 
 syntax = "proto3";
 
-package keypb;
+package keyfile.keypb;
+
+option go_package = "github.com/creachadair/keyfile/keypb";
 
 // Keyfile is the storage format for a key file. The keys in a file are
 // encrypted with AES-256 using a key derived from a passphrase using scrypt.
