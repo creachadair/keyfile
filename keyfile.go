@@ -89,9 +89,9 @@ func Parse(data []byte) (*File, error) {
 	}, nil
 }
 
-// MarshalBinary encodes f in binary format for storage.
-// This method satisfies the encoding.BinaryMarshaler interface.
-func (f *File) MarshalBinary() ([]byte, error) {
+// Encode encodes f in binary format for storage, such that
+// keyfile.Parse(f.Encode()) is equivalent to f.
+func (f *File) Encode() []byte {
 	ilen, slen := len(f.Init), len(f.Salt)
 	buf := make([]byte, ilen+slen+len(f.data)+2)
 	buf[0] = byte(ilen)
@@ -99,7 +99,7 @@ func (f *File) MarshalBinary() ([]byte, error) {
 	copy(buf[2:], f.Init)
 	copy(buf[2+ilen:], f.Salt)
 	copy(buf[2+ilen+slen:], f.data)
-	return buf, nil
+	return buf
 }
 
 // Get decrypts and returns the key from f using the given passphrase.
@@ -164,11 +164,7 @@ func (f *File) Set(passphrase string, secret []byte) error {
 
 // WriteTo encodes f to the specified w in protobuf wire format.
 func (f *File) WriteTo(w io.Writer) (int64, error) {
-	bits, err := f.MarshalBinary()
-	if err != nil {
-		return 0, err
-	}
-	nw, err := w.Write(bits)
+	nw, err := w.Write(f.Encode())
 	return int64(nw), err
 }
 

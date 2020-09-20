@@ -57,11 +57,7 @@ func TestEncodeParse(t *testing.T) {
 	}
 
 	// Verify that we can round-trip the encoded packet.
-	enc, err := f.MarshalBinary()
-	if err != nil {
-		t.Fatalf("Encoding keyfile: %v", err)
-	}
-
+	enc := f.Encode()
 	dec, err := keyfile.Parse(enc)
 	if err != nil {
 		t.Fatalf("Parsing keyfile: %v", err)
