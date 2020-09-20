@@ -3,14 +3,11 @@
 package keyfile_test
 
 import (
-	"bytes"
 	"errors"
 	"testing"
 
 	"github.com/creachadair/keyfile"
-	"github.com/creachadair/keyfile/keypb"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestEmpty(t *testing.T) {
@@ -48,7 +45,7 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-func TestReadWrite(t *testing.T) {
+func TestEncodeParse(t *testing.T) {
 	const (
 		passphrase = "apoplexis"
 		secret     = "rhubarb is disgusting"
@@ -59,19 +56,25 @@ func TestReadWrite(t *testing.T) {
 		t.Fatalf("Set %q: unexpected error: %v", secret, err)
 	}
 
-	// Verify that we can write the bits out and read them back and still
-	// recover the expected values.
-	var buf bytes.Buffer
-	if _, err := f.WriteTo(&buf); err != nil {
-		t.Fatalf("Writing keyfile: %v", err)
-	}
-	dec, err := keyfile.Load(&buf)
+	// Verify that we can round-trip the encoded packet.
+	enc, err := f.MarshalBinary()
 	if err != nil {
-		t.Fatalf("Loading keyfile: %v", err)
+		t.Fatalf("Encoding keyfile: %v", err)
 	}
 
-	opt := cmpopts.IgnoreUnexported(keypb.Keyfile{}, keypb.Keyfile_Key{})
-	if diff := cmp.Diff(f.Keyfile, dec.Keyfile, opt); diff != "" {
+	dec, err := keyfile.Parse(enc)
+	if err != nil {
+		t.Fatalf("Parsing keyfile: %v", err)
+	}
+
+	opt := cmp.AllowUnexported(keyfile.File{})
+	if diff := cmp.Diff(f, dec, opt); diff != "" {
 		t.Errorf("Keyfile mismatch (-want, +got):\n%s", diff)
+	}
+
+	if got, err := dec.Get(passphrase); err != nil {
+		t.Errorf("Get: got error %v, want %q", err, secret)
+	} else if diff := cmp.Diff([]byte(secret), got); diff != "" {
+		t.Errorf("Wrong key value (-want, +got):\n%s", diff)
 	}
 }
