@@ -22,7 +22,6 @@ var (
 	doGet    = flag.Bool("get", false, "Read the contents of the keyfile")
 	doRaw    = flag.Bool("raw", false, "Write keyfile contents without encoding (with -get)")
 	doSet    = flag.String("set", "", "Write this string to the keyfile")
-	doCopy   = flag.String("copy", "", "Copy the contents of this file to the keyfile")
 	doRekey  = flag.Bool("rekey", false, "Change the passphrase on the keyfile")
 	doRandom = flag.Int("random", 0, "Write a random key to the keyfile")
 )
@@ -74,13 +73,6 @@ func main() {
 		key, err := decodeKey(*doSet)
 		if err != nil {
 			log.Fatalf("Decoding key: %v", err)
-		}
-		mustWriteKeyFile(filePath, mustSetKey(key))
-
-	case *doCopy != "":
-		key, err := ioutil.ReadFile(*doCopy)
-		if err != nil {
-			log.Fatalf("Reading key: %v", err)
 		}
 		mustWriteKeyFile(filePath, mustSetKey(key))
 
@@ -154,9 +146,6 @@ func countOpts() (opts int) {
 		opts++
 	}
 	if *doSet != "" {
-		opts++
-	}
-	if *doCopy != "" {
 		opts++
 	}
 	if *doRekey {
