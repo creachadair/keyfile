@@ -40,10 +40,10 @@ const (
 	magic = "KF\x01" // format magic number
 )
 
-// A File represents a keyfile.
+// A File represents a keyfile. A zero value is ready for use.
 type File struct {
-	Init []byte // initialization vector
-	Salt []byte // key-generation salt
+	init []byte // initialization vector
+	salt []byte // key-generation salt
 	data []byte // encrypted data packet
 
 	// The storage format of the file is:
@@ -91,8 +91,8 @@ func Parse(data []byte) (*File, error) {
 		return nil, fmt.Errorf("%w: invalid CRC", ErrBadPacket)
 	}
 	return &File{
-		Init: data[2 : 2+ilen],
-		Salt: data[2+ilen : 2+ilen+slen],
+		init: data[2 : 2+ilen],
+		salt: data[2+ilen : 2+ilen+slen],
 		data: user,
 	}, nil
 }
@@ -100,13 +100,13 @@ func Parse(data []byte) (*File, error) {
 // Encode encodes f in binary format for storage, such that
 // keyfile.Parse(f.Encode()) is equivalent to f.
 func (f *File) Encode() []byte {
-	ilen, slen := len(f.Init), len(f.Salt)
+	ilen, slen := len(f.init), len(f.salt)
 	buf := make([]byte, len(magic)+ilen+slen+len(f.data)+2)
 	n := copy(buf, []byte(magic))
 	buf[n] = byte(ilen)
 	buf[n+1] = byte(slen)
-	copy(buf[n+2:], f.Init)
-	copy(buf[n+2+ilen:], f.Salt)
+	copy(buf[n+2:], f.init)
+	copy(buf[n+2+ilen:], f.salt)
 	copy(buf[n+2+ilen+slen:], f.data)
 	return buf
 }
@@ -115,7 +115,7 @@ func (f *File) Encode() []byte {
 // It returns ErrBadPassphrase if the key cannot be decrypted.
 // It returns ErrNoKey if f is empty.
 func (f *File) Get(passphrase string) ([]byte, error) {
-	if len(f.Init) == 0 || len(f.Salt) == 0 || len(f.data) <= 4 {
+	if len(f.init) == 0 || len(f.salt) == 0 || len(f.data) <= 4 {
 		return nil, ErrNoKey
 	}
 
@@ -180,25 +180,25 @@ func (f *File) WriteTo(w io.Writer) (int64, error) {
 // keySalt returns the passphrase key salt, creating it if necessary.  This can
 // only fail if random generation fails.
 func (f *File) keySalt() ([]byte, error) {
-	if len(f.Salt) == 0 {
+	if len(f.salt) == 0 {
 		var buf [keySaltBytes]byte
 		if _, err := rand.Read(buf[:]); err != nil {
 			return nil, err
 		}
-		f.Salt = buf[:]
+		f.salt = buf[:]
 	}
-	return f.Salt, nil
+	return f.salt, nil
 }
 
 // keyIV returns the initialization vector, creating it if necessary.
 func (f *File) keyIV() ([]byte, error) {
-	if len(f.Init) == 0 {
-		f.Init = make([]byte, aes.BlockSize)
-		if _, err := rand.Read(f.Init); err != nil {
+	if len(f.init) == 0 {
+		f.init = make([]byte, aes.BlockSize)
+		if _, err := rand.Read(f.init); err != nil {
 			return nil, err
 		}
 	}
-	return f.Init, nil
+	return f.init, nil
 }
 
 // keyCipher returns an CTR mode stream for f using the given passphrase.
@@ -237,8 +237,8 @@ func (f *File) checkKey(data []byte) ([]byte, error) {
 // checksum computes a IEEE CRC32 for the given data and key material.
 func (f *File) checksum(data []byte) uint32 {
 	crc := crc32.NewIEEE()
-	crc.Write(f.Init)
-	crc.Write(f.Salt)
+	crc.Write(f.init)
+	crc.Write(f.salt)
 	crc.Write(data[4:])
 	return crc.Sum32()
 }
