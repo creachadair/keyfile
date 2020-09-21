@@ -3,9 +3,9 @@
 // Package keyfile provides an interface to read and write secret keys in a
 // persistent format protected by a passphrase.
 //
-// Each secret is stored in a keypb.Keyfile protocol buffer message, inside
-// which the secret is encrypted with AES-256 in CTR mode. The encryption key
-// is derived from a user passphrase using the scrypt algorithm.
+// Each secret is stored in a binary packet, inside which the secret is
+// encrypted with AES-256 in CTR mode. The encryption key is derived from a
+// user passphrase using the scrypt algorithm.
 package keyfile
 
 import (
