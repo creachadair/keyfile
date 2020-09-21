@@ -9,6 +9,7 @@
 package keyfile
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -29,12 +30,14 @@ var (
 	ErrNoKey = errors.New("no key is present")
 
 	// ErrBadPacket is reported when parsing an invalid keyfile packet.
-	ErrBadPacket = errors.New("parse: invalid packet format")
+	ErrBadPacket = errors.New("parse: bad packet")
 )
 
 const (
 	aesKeyBytes  = 32 // for AES-256
 	keySaltBytes = 16 // size of random salt for scrypt
+
+	magic = "KF\x01" // format magic number
 )
 
 // A File represents a keyfile.
@@ -46,10 +49,11 @@ type File struct {
 	// The storage format of the file is:
 	//
 	//   Pos    Len  Description
-	//   0      1    Length of initialization vector in bytes (ilen)
-	//   1      1    Length of key generation salt in byptes (slen)
-	//   2      ilen Initialization vector
-	//   2+ilen slen Key generation salt
+	//   0      3    Format tag, 'K', 'F', '\x01'
+	//   3      1    Length of initialization vector in bytes (ilen)
+	//   4      1    Length of key generation salt in byptes (slen)
+	//   5      ilen Initialization vector
+	//   5+ilen slen Key generation salt
 	//   ...    ...  The encrypted data packet
 	//
 	// The data packet is encrypted with AES-256 in CTR mode. The plaintext
@@ -67,20 +71,24 @@ func New() *File { return new(File) }
 
 // Parse parses a binary keyfile packet into a *File.
 func Parse(data []byte) (*File, error) {
-	if len(data) < 6 {
-		return nil, ErrBadPacket
+	if !bytes.HasPrefix(data, []byte(magic)) {
+		return nil, fmt.Errorf("%w: invalid magic", ErrBadPacket)
+	}
+	data = data[len(magic):]
+	if len(data) < 2 {
+		return nil, fmt.Errorf("%w: truncated packet", ErrBadPacket)
 	}
 	ilen := int(data[0])
 	if 2+ilen > len(data) {
-		return nil, ErrBadPacket // truncated IV
+		return nil, fmt.Errorf("%w: invalid IV", ErrBadPacket)
 	}
 	slen := int(data[1])
 	if 2+ilen+slen > len(data) {
-		return nil, ErrBadPacket // truncated salt
+		return nil, fmt.Errorf("%w: invalid salt", ErrBadPacket)
 	}
 	user := data[2+ilen+slen:]
 	if len(user) < 4 {
-		return nil, ErrBadPacket // truncated or missing CRC
+		return nil, fmt.Errorf("%w: invalid CRC", ErrBadPacket)
 	}
 	return &File{
 		Init: data[2 : 2+ilen],
@@ -93,12 +101,13 @@ func Parse(data []byte) (*File, error) {
 // keyfile.Parse(f.Encode()) is equivalent to f.
 func (f *File) Encode() []byte {
 	ilen, slen := len(f.Init), len(f.Salt)
-	buf := make([]byte, ilen+slen+len(f.data)+2)
-	buf[0] = byte(ilen)
-	buf[1] = byte(slen)
-	copy(buf[2:], f.Init)
-	copy(buf[2+ilen:], f.Salt)
-	copy(buf[2+ilen+slen:], f.data)
+	buf := make([]byte, len(magic)+ilen+slen+len(f.data)+2)
+	n := copy(buf, []byte(magic))
+	buf[n] = byte(ilen)
+	buf[n+1] = byte(slen)
+	copy(buf[n+2:], f.Init)
+	copy(buf[n+2+ilen:], f.Salt)
+	copy(buf[n+2+ilen+slen:], f.data)
 	return buf
 }
 

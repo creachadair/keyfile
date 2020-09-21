@@ -18,6 +18,29 @@ func TestEmpty(t *testing.T) {
 	}
 }
 
+func TestParseErrors(t *testing.T) {
+	for _, test := range []string{
+		"",                     // missing magic number
+		"X",                    // invalid magic number
+		"KF",                   // "
+		"KF\x00",               // incorrect version
+		"KF\x02",               // "
+		"KF\x01",               // short packet
+		"KF\x01\x00\x00",       // missing CRC
+		"KF\x01\x03\x00",       // truncated IV
+		"KF\x01\x03\x02abc",    // truncated salt
+		"KF\x01\x01\x02abc",    // missing CRC
+		"KF\x01\x02\x01abcXXX", // truncated CRC
+	} {
+		f, err := keyfile.Parse([]byte(test))
+		if !errors.Is(err, keyfile.ErrBadPacket) {
+			t.Errorf("Parse(%q): got %+v, %v; want %v", test, f, err, keyfile.ErrBadPacket)
+		} else {
+			t.Logf("Parse(%q): error OK: %v", test, err)
+		}
+	}
+}
+
 func TestRoundTrip(t *testing.T) {
 	const passphrase = "send in the clanns"
 
