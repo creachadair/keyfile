@@ -35,12 +35,12 @@ func init() {
 Create, read, or modify the contents of a keyfile.
 
 With -get, read the current contents of the file and print them to stdout
-encoded as base64.
+encoded as base64. Include -raw to write the contents without encoding.
 
 With -set, create or replace the file with the specified key.
-If key has the prefix "#x" it is treated as a string of hexadecimal digits.
-If key has the prefix "@" it is treated as a base64 string.
-If key is the string "-" the key is read from stdin.
+- If key has the prefix "#x" it is treated as a string of hexadecimal digits.
+- If key has the prefix "@" it is treated as a base64 string.
+- If key is the string "-" the key is read from stdin.
 Otherwise key is taken verbatim.
 
 With -rekey, rewrite the file with a new passphrase.
