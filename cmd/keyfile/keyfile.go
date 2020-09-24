@@ -104,7 +104,7 @@ func mustWriteKeyFile(path string, kf *keyfile.File) {
 	of, err := atomicfile.New(path, 0600)
 	if err != nil {
 		log.Fatalf("Creating output file: %v", err)
-	} else if _, err := kf.WriteTo(of); err != nil {
+	} else if _, err := of.Write(kf.Encode()); err != nil {
 		of.Cancel()
 		log.Fatalf("Writing output: %v", err)
 	} else if err := of.Close(); err != nil {

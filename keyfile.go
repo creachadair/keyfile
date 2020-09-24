@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
-	"io"
 
 	"golang.org/x/crypto/scrypt"
 )
@@ -169,12 +168,6 @@ func (f *File) Set(passphrase string, secret []byte) error {
 	ctr.XORKeyStream(pkt[4:], secret)
 	f.data = pkt
 	return nil
-}
-
-// WriteTo encodes f to the specified w in protobuf wire format.
-func (f *File) WriteTo(w io.Writer) (int64, error) {
-	nw, err := w.Write(f.Encode())
-	return int64(nw), err
 }
 
 // keySalt returns the passphrase key salt, creating it if necessary.  This can
