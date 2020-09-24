@@ -1,11 +1,31 @@
 // Copyright (C) 2019 Michael J. Fromberger. All Rights Reserved.
 
-// Package keyfile provides an interface to read and write secret keys in a
-// persistent format protected by a passphrase.
+// Package keyfile provides an interface to read and write small secrets such
+// as encryption keys in a persistent format protected by a passphrase.
 //
 // Each secret is stored in a binary packet, inside which the secret is
 // encrypted with AES-256 in CTR mode. The encryption key is derived from a
 // user passphrase using the scrypt algorithm.
+//
+// The binary packet is structured as follows:
+//
+//   Pos         Len     Description
+//   0           3       Format tag, "KF\x01" == "\x4b\x46\x01"
+//   3           1       Length of initialization vector in bytes (ilen)
+//   4           1       Length of key generation salt in byptes (slen)
+//   5           ilen    Initialization vector
+//   5+ilen      slen    Key generation salt
+//   5+ilen+slen 4+dlen  The encrypted data packet (see below)
+//
+// The data packet is encrypted with AES-256 in CTR mode. The plaintext
+// packet for user data of dlen bytes has this format:
+//
+//   0      4    IEEE CRC32 of (init + salt + userData); network byte order
+//   4      dlen User data
+//
+// Thus, the minimum syntactically valid file is 6 bytes in length, with
+// ilen = slen = dlen = 0 and the 4-byte CRC.
+//
 package keyfile
 
 import (
@@ -44,25 +64,6 @@ type File struct {
 	init []byte // initialization vector
 	salt []byte // key-generation salt
 	data []byte // encrypted data packet
-
-	// The storage format of the file is:
-	//
-	//   Pos    Len  Description
-	//   0      3    Format tag, 'K', 'F', '\x01'
-	//   3      1    Length of initialization vector in bytes (ilen)
-	//   4      1    Length of key generation salt in byptes (slen)
-	//   5      ilen Initialization vector
-	//   5+ilen slen Key generation salt
-	//   ...    ...  The encrypted data packet
-	//
-	// The data packet is encrypted with AES-256 in CTR mode. The plaintext
-	// packet for user data of dlen bytes has this format:
-	//
-	//   0      4    IEEE CRC32 of (init + salt + userData); network byte order
-	//   4      dlen User data
-	//
-	// Thus, the minimum syntactically valid file is 6 bytes in length, with
-	// ilen = slen = dlen = 0 and the 4-byte CRC.
 }
 
 // New creates a new empty *File.
