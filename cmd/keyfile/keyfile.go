@@ -88,7 +88,7 @@ func main() {
 		mustWriteKeyFile(filePath, kf)
 
 	default:
-		log.Fatalf("No operation selected")
+		log.Fatal("No operation selected (use -get, -set, -random, or -rekey)")
 	}
 }
 

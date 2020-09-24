@@ -12,7 +12,7 @@
 //   Pos         Len     Description
 //   0           3       Format tag, "KF\x01" == "\x4b\x46\x01"
 //   3           1       Length of initialization vector in bytes (ilen)
-//   4           1       Length of key generation salt in byptes (slen)
+//   4           1       Length of key generation salt in bytes (slen)
 //   5           ilen    Initialization vector
 //   5+ilen      slen    Key generation salt
 //   5+ilen+slen 4+dlen  The encrypted data packet (see below)
@@ -20,11 +20,12 @@
 // The data packet is encrypted with AES-256 in CTR mode. The plaintext
 // packet for user data of dlen bytes has this format:
 //
-//   0      4    IEEE CRC32 of (init + salt + userData); network byte order
-//   4      dlen User data
+//   Pos    Len   Description
+//   0      4     IEEE CRC32 of (init + salt + userData); network byte order
+//   4      dlen  User data
 //
-// Thus, the minimum syntactically valid file is 6 bytes in length, with
-// ilen = slen = dlen = 0 and the 4-byte CRC.
+// Thus, the minimum syntactically valid file is 9 bytes in length, with
+// ilen = slen = dlen = 0, the format tag, and the 4-byte CRC.
 //
 package keyfile
 
@@ -37,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io/ioutil"
 
 	"golang.org/x/crypto/scrypt"
 )
@@ -235,4 +237,18 @@ func (f *File) checksum(data []byte) uint32 {
 	crc.Write(f.salt)
 	crc.Write(data[4:])
 	return crc.Sum32()
+}
+
+// LoadKey is a convenience function to load and decrypt the contents of a key
+// from a stored binary-format keyfile.
+func LoadKey(path, passphrase string) ([]byte, error) {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	kf, err := Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	return kf.Get(passphrase)
 }
