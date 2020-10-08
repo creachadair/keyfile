@@ -97,3 +97,20 @@ func TestEncodeParse(t *testing.T) {
 		t.Errorf("Wrong key value (-want, +got):\n%s", diff)
 	}
 }
+
+func TestSet(t *testing.T) {
+	const secret = "key"
+
+	f := keyfile.New()
+	if err := f.Set("whatever", []byte(secret)); err != nil {
+		t.Errorf("Set %q: unexpected error: %v", secret, err)
+	}
+	if got, err := f.Get("wrong"); err == nil {
+		t.Errorf("Get with wrong passphrase: got %q, %v want error", string(got), err)
+	}
+	if key, err := f.Get("whatever"); err != nil {
+		t.Errorf("Get failed: %v", err)
+	} else if got := string(key); got != secret {
+		t.Errorf("Get: got %q, want %q", got, secret)
+	}
+}

@@ -219,8 +219,8 @@ func (f *File) keyCipher(passphrase string) (cipher.Stream, error) {
 	return cipher.NewCTR(blk, iv), nil
 }
 
-// checkKey decodes a decrypted key wrapper and performs sanity checks.  On
-// success it returns the payload; otherwise ErrBadPassphrase.
+// checkKey decodes a decrypted key wrapper and performs correctness checks.
+// On success it returns the payload; otherwise ErrBadPassphrase.
 func (f *File) checkKey(data []byte) ([]byte, error) {
 	want := f.checksum(data[4:])
 	got := binary.BigEndian.Uint32(data)
@@ -235,7 +235,7 @@ func (f *File) checksum(data []byte) uint32 {
 	crc := crc32.NewIEEE()
 	crc.Write(f.init)
 	crc.Write(f.salt)
-	crc.Write(data[4:])
+	crc.Write(data)
 	return crc.Sum32()
 }
 
