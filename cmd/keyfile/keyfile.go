@@ -62,7 +62,7 @@ func main() {
 	}
 	switch {
 	case *doGet:
-		key := mustReadKeyfile(filePath)
+		key := mustReadKeyfile("", filePath)
 		if *doRaw {
 			os.Stdout.Write(key)
 		} else {
@@ -74,15 +74,15 @@ func main() {
 		if err != nil {
 			log.Fatalf("Decoding key: %v", err)
 		}
-		mustWriteKeyFile(filePath, mustSetKey(key))
+		mustWriteKeyFile(filePath, mustSetKey("", key))
 
 	case *doRekey:
-		old := mustReadKeyfile(filePath)
-		mustWriteKeyFile(filePath, mustSetKey(old))
+		old := mustReadKeyfile("Old ", filePath)
+		mustWriteKeyFile(filePath, mustSetKey("New ", old))
 
 	case *doRandom > 0:
 		kf := keyfile.New()
-		if _, err := kf.Random(mustPassphrase(), *doRandom); err != nil {
+		if _, err := kf.Random(mustPassphrase(""), *doRandom); err != nil {
 			log.Fatalf("Generating random key: %v", err)
 		}
 		mustWriteKeyFile(filePath, kf)
@@ -92,9 +92,9 @@ func main() {
 	}
 }
 
-func mustSetKey(key []byte) *keyfile.File {
+func mustSetKey(tag string, key []byte) *keyfile.File {
 	kf := keyfile.New()
-	if err := kf.Set(mustPassphrase(), key); err != nil {
+	if err := kf.Set(mustPassphrase(tag), key); err != nil {
 		log.Fatalf("Encoding keyfile: %v", err)
 	}
 	return kf
@@ -112,8 +112,8 @@ func mustWriteKeyFile(path string, kf *keyfile.File) {
 	}
 }
 
-func mustReadKeyfile(path string) []byte {
-	key, err := keyfile.LoadKey(path, mustPassphrase())
+func mustReadKeyfile(tag, path string) []byte {
+	key, err := keyfile.LoadKey(path, mustPassphrase(tag))
 	if err != nil {
 		log.Fatalf("Loading keyfile: %v", err)
 	}
@@ -131,8 +131,8 @@ func decodeKey(s string) ([]byte, error) {
 	return []byte(s), nil
 }
 
-func mustPassphrase() string {
-	pp, err := getpass.Prompt("Passphrase: ")
+func mustPassphrase(tag string) string {
+	pp, err := getpass.Prompt(tag + "Passphrase: ")
 	if err != nil {
 		log.Fatalf("Reading passsphrase: %v", err)
 	} else if pp == "" {
