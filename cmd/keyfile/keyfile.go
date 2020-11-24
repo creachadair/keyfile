@@ -113,7 +113,9 @@ func mustWriteKeyFile(path string, kf *keyfile.File) {
 }
 
 func mustReadKeyfile(tag, path string) []byte {
-	key, err := keyfile.LoadKey(path, mustPassphrase(tag))
+	key, err := keyfile.LoadKey(path, func() (string, error) {
+		return mustPassphrase(tag), nil
+	})
 	if err != nil {
 		log.Fatalf("Loading keyfile: %v", err)
 	}

@@ -240,13 +240,18 @@ func (f *File) checksum(data []byte) uint32 {
 }
 
 // LoadKey is a convenience function to load and decrypt the contents of a key
-// from a stored binary-format keyfile.
-func LoadKey(path, passphrase string) ([]byte, error) {
+// from a stored binary-format keyfile. The pf function is called to obtain a
+// passphrase.
+func LoadKey(path string, pf func() (string, error)) ([]byte, error) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	kf, err := Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	passphrase, err := pf()
 	if err != nil {
 		return nil, err
 	}
