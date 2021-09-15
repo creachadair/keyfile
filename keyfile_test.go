@@ -20,17 +20,14 @@ func TestEmpty(t *testing.T) {
 
 func TestParseErrors(t *testing.T) {
 	for _, test := range []string{
-		"",                     // missing magic number
-		"X",                    // invalid magic number
-		"KF",                   // "
-		"KF\x00",               // incorrect version
-		"KF\x02",               // "
-		"KF\x01",               // short packet
-		"KF\x01\x00\x00",       // missing CRC
-		"KF\x01\x03\x00",       // truncated IV
-		"KF\x01\x03\x02abc",    // truncated salt
-		"KF\x01\x01\x02abc",    // missing CRC
-		"KF\x01\x02\x01abcXXX", // truncated CRC
+		"",                  // missing magic number
+		"X",                 // invalid magic number
+		"KF",                // "
+		"KF\x00",            // incorrect version
+		"KF\x01",            // "
+		"KF\x02",            // short packet
+		"KF\x02\x03\x00",    // truncated salt
+		"KF\x02\x03\x02abc", // truncated nonce
 	} {
 		f, err := keyfile.Parse([]byte(test))
 		if !errors.Is(err, keyfile.ErrBadPacket) {

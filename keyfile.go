@@ -9,23 +9,15 @@
 //
 // The binary packet is structured as follows:
 //
-//   Pos         Len     Description
-//   0           3       Format tag, "KF\x01" == "\x4b\x46\x01"
-//   3           1       Length of initialization vector in bytes (ilen)
-//   4           1       Length of key generation salt in bytes (slen)
-//   5           ilen    Initialization vector
-//   5+ilen      slen    Key generation salt
-//   5+ilen+slen 4+dlen  The encrypted data packet (see below)
+//   Pos          Len     Description
+//   0            3       Format tag, "KF\x02" == "\x4b\x46\x02"
+//   3            1       Length of key generation salt in bytes (slen)
+//   4            1       Length of GCM nonce in bytes (nlen)
+//   5            slen    Key generation salt
+//   5+slen       nlen    GCM nonce
+//   5+slen+nlen  dlen    The encrypted data packet (to end)
 //
-// The data packet is encrypted with AES-256 in CTR mode. The plaintext
-// packet for user data of dlen bytes has this format:
-//
-//   Pos    Len   Description
-//   0      4     IEEE CRC32 of (init + salt + userData); network byte order
-//   4      dlen  User data
-//
-// Thus, the minimum syntactically valid file is 9 bytes in length, with
-// ilen = slen = dlen = 0, the format tag, and the 4-byte CRC.
+// The data packet is encrypteed with AES-256 in GCM.
 //
 package keyfile
 
@@ -34,10 +26,8 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"io/ioutil"
 
 	"golang.org/x/crypto/scrypt"
@@ -55,17 +45,18 @@ var (
 )
 
 const (
-	aesKeyBytes  = 32 // for AES-256
-	keySaltBytes = 16 // size of random salt for scrypt
+	aesKeyBytes      = 32 // for AES-256
+	keySaltBytes     = 16 // size of random salt for scrypt
+	scryptWorkFactor = 1 << 15
 
-	magic = "KF\x01" // format magic number
+	magic = "KF\x02" // format magic number
 )
 
 // A File represents a keyfile. A zero value is ready for use.
 type File struct {
-	init []byte // initialization vector
-	salt []byte // key-generation salt
-	data []byte // encrypted data packet
+	salt  []byte // key-generation salt
+	nonce []byte // AEAD nonce
+	data  []byte // encrypted data packet
 }
 
 // New creates a new empty *File.
@@ -77,39 +68,36 @@ func Parse(data []byte) (*File, error) {
 		return nil, fmt.Errorf("%w: invalid magic", ErrBadPacket)
 	}
 	data = data[len(magic):]
-	if len(data) < 2 {
+	if len(data) < 2 { // slen, nlen
 		return nil, fmt.Errorf("%w: truncated packet", ErrBadPacket)
 	}
-	ilen := int(data[0])
-	if 2+ilen > len(data) {
-		return nil, fmt.Errorf("%w: invalid IV", ErrBadPacket)
-	}
-	slen := int(data[1])
-	if 2+ilen+slen > len(data) {
+	slen := int(data[0])
+	if 2+slen > len(data) {
 		return nil, fmt.Errorf("%w: invalid salt", ErrBadPacket)
 	}
-	user := data[2+ilen+slen:]
-	if len(user) < 4 {
-		return nil, fmt.Errorf("%w: invalid CRC", ErrBadPacket)
+	nlen := int(data[1])
+	if 2+nlen+nlen > len(data) {
+		return nil, fmt.Errorf("%w: invalid nonce", ErrBadPacket)
 	}
+	user := data[2+slen+nlen:]
 	return &File{
-		init: data[2 : 2+ilen],
-		salt: data[2+ilen : 2+ilen+slen],
-		data: user,
+		salt:  data[2 : 2+slen],
+		nonce: data[2+slen : 2+slen+nlen],
+		data:  user,
 	}, nil
 }
 
 // Encode encodes f in binary format for storage, such that
 // keyfile.Parse(f.Encode()) is equivalent to f.
 func (f *File) Encode() []byte {
-	ilen, slen := len(f.init), len(f.salt)
-	buf := make([]byte, len(magic)+ilen+slen+len(f.data)+2)
+	slen, nlen := len(f.salt), len(f.nonce)
+	buf := make([]byte, len(magic)+2+slen+nlen+len(f.data))
 	n := copy(buf, []byte(magic))
-	buf[n] = byte(ilen)
-	buf[n+1] = byte(slen)
-	copy(buf[n+2:], f.init)
-	copy(buf[n+2+ilen:], f.salt)
-	copy(buf[n+2+ilen+slen:], f.data)
+	buf[n] = byte(slen)
+	buf[n+1] = byte(nlen)
+	copy(buf[n+2:], f.salt)
+	copy(buf[n+2+slen:], f.nonce)
+	copy(buf[n+2+slen+nlen:], f.data)
 	return buf
 }
 
@@ -117,25 +105,20 @@ func (f *File) Encode() []byte {
 // It returns ErrBadPassphrase if the key cannot be decrypted.
 // It returns ErrNoKey if f is empty.
 func (f *File) Get(passphrase string) ([]byte, error) {
-	if len(f.init) == 0 || len(f.salt) == 0 || len(f.data) <= 4 {
+	if len(f.salt) == 0 || len(f.nonce) == 0 {
 		return nil, ErrNoKey
 	}
 
 	// Decrypt the key wrapper.
-	ctr, err := f.keyCipher(passphrase)
+	aead, err := f.keyCipher(passphrase)
 	if err != nil {
-		return nil, fmt.Errorf("keyfile decrypt: %w", err)
+		return nil, fmt.Errorf("keyfile init: %w", err)
 	}
-	tmp := make([]byte, len(f.data))
-	ctr.XORKeyStream(tmp, f.data)
-
-	// Decode and return the secret. If this fails, report that the passphrase
-	// was invalid.
-	sec, err := f.checkKey(tmp)
+	dec, err := aead.Open(nil, f.nonce, f.data, nil)
 	if err != nil {
 		return nil, fmt.Errorf("keyfile verify: %w", err)
 	}
-	return sec, nil
+	return dec, nil
 }
 
 // Random generates a random secret with the given length, encrypts it with the
@@ -159,17 +142,15 @@ func (f *File) Random(passphrase string, nbytes int) ([]byte, error) {
 // any previous data.
 func (f *File) Set(passphrase string, secret []byte) error {
 	*f = File{} // reset
-	ctr, err := f.keyCipher(passphrase)
+	aead, err := f.keyCipher(passphrase)
 	if err != nil {
-		return fmt.Errorf("keyfile encrypt: %w", err)
+		return fmt.Errorf("keyfile init: %w", err)
 	}
-
-	// Package and encrypt the secret.
-	pkt := make([]byte, len(secret)+4) // +4 for checksum
-	binary.BigEndian.PutUint32(pkt, f.checksum(secret))
-	ctr.XORKeyStream(pkt[:4], pkt[:4])
-	ctr.XORKeyStream(pkt[4:], secret)
-	f.data = pkt
+	f.nonce = make([]byte, aead.NonceSize())
+	if _, err := rand.Read(f.nonce); err != nil {
+		return err
+	}
+	f.data = aead.Seal(nil, f.nonce, secret, nil)
 	return nil
 }
 
@@ -186,57 +167,21 @@ func (f *File) keySalt() ([]byte, error) {
 	return f.salt, nil
 }
 
-// keyIV returns the initialization vector, creating it if necessary.
-func (f *File) keyIV() ([]byte, error) {
-	if len(f.init) == 0 {
-		f.init = make([]byte, aes.BlockSize)
-		if _, err := rand.Read(f.init); err != nil {
-			return nil, err
-		}
-	}
-	return f.init, nil
-}
-
-// keyCipher returns an CTR mode stream for f using the given passphrase.
-func (f *File) keyCipher(passphrase string) (cipher.Stream, error) {
+// keyCipher returns a cipher.AEAD for f using the given passphrase.
+func (f *File) keyCipher(passphrase string) (cipher.AEAD, error) {
 	salt, err := f.keySalt()
 	if err != nil {
 		return nil, fmt.Errorf("key salt: %w", err)
 	}
-	ckey, err := scrypt.Key([]byte(passphrase), salt, 32768, 8, 1, aesKeyBytes)
+	ckey, err := scrypt.Key([]byte(passphrase), salt, scryptWorkFactor, 8, 1, aesKeyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("scrypt: %w", err)
-	}
-
-	iv, err := f.keyIV()
-	if err != nil {
-		return nil, fmt.Errorf("initialization vector: %w", err)
 	}
 	blk, err := aes.NewCipher(ckey)
 	if err != nil {
 		return nil, err
 	}
-	return cipher.NewCTR(blk, iv), nil
-}
-
-// checkKey decodes a decrypted key wrapper and performs correctness checks.
-// On success it returns the payload; otherwise ErrBadPassphrase.
-func (f *File) checkKey(data []byte) ([]byte, error) {
-	want := f.checksum(data[4:])
-	got := binary.BigEndian.Uint32(data)
-	if got != want {
-		return nil, ErrBadPassphrase
-	}
-	return data[4:], nil
-}
-
-// checksum computes a IEEE CRC32 for the given data and key material.
-func (f *File) checksum(data []byte) uint32 {
-	crc := crc32.NewIEEE()
-	crc.Write(f.init)
-	crc.Write(f.salt)
-	crc.Write(data)
-	return crc.Sum32()
+	return cipher.NewGCM(blk)
 }
 
 // LoadKey is a convenience function to load and decrypt the contents of a key
