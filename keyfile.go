@@ -28,7 +28,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"golang.org/x/crypto/scrypt"
 )
@@ -188,7 +188,7 @@ func (f *File) keyCipher(passphrase string) (cipher.AEAD, error) {
 // from a stored binary-format keyfile. The pf function is called to obtain a
 // passphrase.
 func LoadKey(path string, pf func() (string, error)) ([]byte, error) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

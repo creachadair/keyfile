@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -124,7 +124,7 @@ func mustReadKeyfile(tag, path string) []byte {
 
 func decodeKey(s string) ([]byte, error) {
 	if s == "-" {
-		return ioutil.ReadAll(os.Stdin)
+		return io.ReadAll(os.Stdin)
 	} else if t := strings.TrimPrefix(s, "#x"); t != s {
 		return hex.DecodeString(t)
 	} else if t := strings.TrimPrefix(s, "@"); t != s {
