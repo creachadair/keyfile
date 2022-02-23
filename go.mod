@@ -9,4 +9,4 @@ require (
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292
 )
 
-require golang.org/x/sys v0.0.0-20220209214540-3681064d5158 // indirect
+require golang.org/x/sys v0.0.0-20220223155357-96fed51e1446 // indirect
