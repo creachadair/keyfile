@@ -6,7 +6,7 @@ require (
 	github.com/creachadair/atomicfile v0.2.5
 	github.com/creachadair/getpass v0.1.1
 	github.com/google/go-cmp v0.5.1
-	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
+	golang.org/x/crypto v0.0.0-20220427172511-eb4f295cb31f
 )
 
 require golang.org/x/sys v0.0.0-20220422013727-9388b58f7150 // indirect
