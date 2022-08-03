@@ -9,16 +9,15 @@
 //
 // The binary packet is structured as follows:
 //
-//   Pos          Len     Description
-//   0            3       Format tag, "KF\x02" == "\x4b\x46\x02"
-//   3            1       Length of key generation salt in bytes (slen)
-//   4            1       Length of GCM nonce in bytes (nlen)
-//   5            slen    Key generation salt
-//   5+slen       nlen    GCM nonce
-//   5+slen+nlen  dlen    The encrypted data packet (to end)
+//	Pos          Len     Description
+//	0            3       Format tag, "KF\x02" == "\x4b\x46\x02"
+//	3            1       Length of key generation salt in bytes (slen)
+//	4            1       Length of GCM nonce in bytes (nlen)
+//	5            slen    Key generation salt
+//	5+slen       nlen    GCM nonce
+//	5+slen+nlen  dlen    The encrypted data packet (to end)
 //
 // The data packet is encrypteed with AES-256 in GCM.
-//
 package keyfile
 
 import (
