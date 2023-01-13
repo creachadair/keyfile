@@ -24,6 +24,7 @@ var (
 	doSet    = flag.String("set", "", "Write this string to the keyfile")
 	doRekey  = flag.Bool("rekey", false, "Change the passphrase on the keyfile")
 	doRandom = flag.Int("random", 0, "Write a random key to the keyfile")
+	emptyOK  = flag.Bool("empty-ok", false, "If true, an empty passphrase is allowed")
 )
 
 func init() {
@@ -137,7 +138,7 @@ func mustPassphrase(tag string) string {
 	pp, err := getpass.Prompt(tag + "Passphrase: ")
 	if err != nil {
 		log.Fatalf("Reading passsphrase: %v", err)
-	} else if pp == "" {
+	} else if pp == "" && !*emptyOK {
 		log.Fatal("Empty passphrase")
 	}
 	return pp
