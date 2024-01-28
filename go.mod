@@ -1,12 +1,14 @@
 module github.com/creachadair/keyfile
 
-go 1.20
+go 1.21
+
+toolchain go1.21.6
 
 require (
-	github.com/creachadair/atomicfile v0.3.2
+	github.com/creachadair/atomicfile v0.3.3
 	github.com/creachadair/getpass v0.2.1
 	github.com/google/go-cmp v0.6.0
-	golang.org/x/crypto v0.17.0
+	golang.org/x/crypto v0.18.0
 )
 
 require (
