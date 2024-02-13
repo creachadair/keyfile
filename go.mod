@@ -8,10 +8,10 @@ require (
 	github.com/creachadair/atomicfile v0.3.3
 	github.com/creachadair/getpass v0.2.1
 	github.com/google/go-cmp v0.6.0
-	golang.org/x/crypto v0.18.0
+	golang.org/x/crypto v0.19.0
 )
 
 require (
-	golang.org/x/sys v0.16.0 // indirect
-	golang.org/x/term v0.16.0 // indirect
+	golang.org/x/sys v0.17.0 // indirect
+	golang.org/x/term v0.17.0 // indirect
 )
