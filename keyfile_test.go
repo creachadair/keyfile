@@ -3,10 +3,14 @@
 package keyfile_test
 
 import (
+	crand "crypto/rand"
 	"errors"
+	"io"
+	mrand "math/rand"
 	"testing"
 
 	"github.com/creachadair/keyfile"
+	"github.com/creachadair/mds/mtest"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -39,6 +43,7 @@ func TestParseErrors(t *testing.T) {
 }
 
 func TestRoundTrip(t *testing.T) {
+	mtest.Swap[io.Reader](t, &crand.Reader, mrand.New(mrand.NewSource(20240427103817)))
 	const passphrase = "send in the clanns"
 
 	f := keyfile.New()
@@ -66,6 +71,7 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestEncodeParse(t *testing.T) {
+	mtest.Swap[io.Reader](t, &crand.Reader, mrand.New(mrand.NewSource(20240427103823)))
 	const (
 		passphrase = "apoplexis"
 		secret     = "rhubarb is disgusting"
@@ -96,6 +102,7 @@ func TestEncodeParse(t *testing.T) {
 }
 
 func TestSet(t *testing.T) {
+	mtest.Swap[io.Reader](t, &crand.Reader, mrand.New(mrand.NewSource(20240427103839)))
 	const secret = "key"
 
 	f := keyfile.New()

@@ -24,7 +24,7 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -128,7 +128,7 @@ func (f *File) Random(passphrase string, nbytes int) ([]byte, error) {
 		return nil, errors.New("invalid secret size (must be positive)")
 	}
 	secret := make([]byte, nbytes)
-	if _, err := rand.Read(secret); err != nil {
+	if _, err := crand.Read(secret); err != nil {
 		return nil, err
 	}
 	if err := f.Set(passphrase, secret); err != nil {
@@ -146,7 +146,7 @@ func (f *File) Set(passphrase string, secret []byte) error {
 		return fmt.Errorf("keyfile init: %w", err)
 	}
 	f.nonce = make([]byte, aead.NonceSize())
-	if _, err := rand.Read(f.nonce); err != nil {
+	if _, err := crand.Read(f.nonce); err != nil {
 		return err
 	}
 	f.data = aead.Seal(nil, f.nonce, secret, nil)
@@ -158,7 +158,7 @@ func (f *File) Set(passphrase string, secret []byte) error {
 func (f *File) keySalt() ([]byte, error) {
 	if len(f.salt) == 0 {
 		var buf [keySaltBytes]byte
-		if _, err := rand.Read(buf[:]); err != nil {
+		if _, err := crand.Read(buf[:]); err != nil {
 			return nil, err
 		}
 		f.salt = buf[:]
