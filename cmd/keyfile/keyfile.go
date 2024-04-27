@@ -83,7 +83,7 @@ func main() {
 
 	case *doRandom > 0:
 		kf := keyfile.New()
-		if _, err := kf.Random(mustPassphrase(""), *doRandom); err != nil {
+		if _, err := kf.Random(mustPassphrase("", true), *doRandom); err != nil {
 			log.Fatalf("Generating random key: %v", err)
 		}
 		mustWriteKeyFile(filePath, kf)
@@ -95,7 +95,7 @@ func main() {
 
 func mustSetKey(tag string, key []byte) *keyfile.File {
 	kf := keyfile.New()
-	if err := kf.Set(mustPassphrase(tag), key); err != nil {
+	if err := kf.Set(mustPassphrase(tag, true), key); err != nil {
 		log.Fatalf("Encoding keyfile: %v", err)
 	}
 	return kf
@@ -115,7 +115,7 @@ func mustWriteKeyFile(path string, kf *keyfile.File) {
 
 func mustReadKeyfile(tag, path string) []byte {
 	key, err := keyfile.LoadKey(path, func() (string, error) {
-		return mustPassphrase(tag), nil
+		return mustPassphrase(tag, false), nil
 	})
 	if err != nil {
 		log.Fatalf("Loading keyfile: %v", err)
@@ -134,12 +134,20 @@ func decodeKey(s string) ([]byte, error) {
 	return []byte(s), nil
 }
 
-func mustPassphrase(tag string) string {
+func mustPassphrase(tag string, confirm bool) string {
 	pp, err := getpass.Prompt(tag + "Passphrase: ")
 	if err != nil {
-		log.Fatalf("Reading passsphrase: %v", err)
+		log.Fatalf("Read passsphrase: %v", err)
 	} else if pp == "" && !*emptyOK {
 		log.Fatal("Empty passphrase")
+	}
+	if confirm {
+		cf, err := getpass.Prompt("Confirm " + tag + "passphrase: ")
+		if err != nil {
+			log.Fatalf("Read confirmation: %v", err)
+		} else if cf != pp {
+			log.Fatal("Passphrases do not match")
+		}
 	}
 	return pp
 }
