@@ -3,9 +3,9 @@ module github.com/creachadair/keyfile
 go 1.22
 
 require (
-	github.com/creachadair/atomicfile v0.3.4
+	github.com/creachadair/atomicfile v0.3.5
 	github.com/creachadair/getpass v0.2.1
-	github.com/creachadair/mds v0.16.0
+	github.com/creachadair/mds v0.17.1
 	github.com/google/go-cmp v0.6.0
 	golang.org/x/crypto v0.26.0
 )
