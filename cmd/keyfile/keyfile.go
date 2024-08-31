@@ -9,14 +9,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/creachadair/atomicfile"
 	"github.com/creachadair/command"
 	"github.com/creachadair/flax"
 	"github.com/creachadair/getpass"
 	"github.com/creachadair/keyfile"
+	"golang.org/x/sys/unix"
 )
 
 var flags struct {
@@ -110,6 +113,24 @@ Keys can be specified in various formats:
 					}
 					return saveKeyFile(keyFile, kf)
 				}),
+			}, {
+				Name:  "offer",
+				Usage: "<key-file> <socket-path>",
+				Help: `Write the contents of a key file to a named pipe.
+
+After reading the key file, offer creates a named pipe at the given
+path. When the pipe is opened by a reader, it writes the key, then
+closes and removes the pipe.`,
+
+				Run: command.Adapt(func(env *command.Env, keyFile, pipeFile string) error {
+					key, err := loadKeyFile("", keyFile)
+					if err != nil {
+						return err
+					}
+					ctx, cancel := signal.NotifyContext(env.Context(), syscall.SIGINT, syscall.SIGTERM)
+					defer cancel()
+					return offerKey(env.SetContext(ctx), pipeFile, key)
+				}),
 			},
 			command.HelpCommand(nil),
 			command.VersionCommand(),
@@ -174,4 +195,28 @@ func getPassphrase(tag string, confirm bool) (string, error) {
 		}
 	}
 	return pp, nil
+}
+
+func offerKey(env *command.Env, pipeFile string, key []byte) error {
+	if err := unix.Mkfifo(pipeFile, 0600); err != nil {
+		return fmt.Errorf("create pipe: %w", err)
+	}
+	defer os.Remove(pipeFile)
+	f, err := os.OpenFile(pipeFile, os.O_WRONLY, os.ModeNamedPipe)
+	if err != nil {
+		return fmt.Errorf("open pipe: %w", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-done:
+		case <-env.Context().Done():
+		}
+		f.Close()
+	}()
+	_, werr := f.Write(key)
+	if err := errors.Join(werr, f.Close()); err != nil {
+		return fmt.Errorf("offering key: %w", err)
+	}
+	return nil
 }
