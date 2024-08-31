@@ -10,9 +10,7 @@ require (
 	github.com/creachadair/mds v0.17.1
 	github.com/google/go-cmp v0.6.0
 	golang.org/x/crypto v0.26.0
+	golang.org/x/sys v0.24.0
 )
 
-require (
-	golang.org/x/sys v0.24.0 // indirect
-	golang.org/x/term v0.23.0 // indirect
-)
+require golang.org/x/term v0.23.0 // indirect
