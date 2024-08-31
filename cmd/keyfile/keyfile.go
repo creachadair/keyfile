@@ -5,122 +5,146 @@ package main
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"flag"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/creachadair/atomicfile"
+	"github.com/creachadair/command"
+	"github.com/creachadair/flax"
 	"github.com/creachadair/getpass"
 	"github.com/creachadair/keyfile"
 )
 
-var (
-	doGet    = flag.Bool("get", false, "Read the contents of the keyfile")
-	doRaw    = flag.Bool("raw", false, "Write keyfile contents without encoding (with -get)")
-	doSet    = flag.String("set", "", "Write this string to the keyfile")
-	doRekey  = flag.Bool("rekey", false, "Change the passphrase on the keyfile")
-	doRandom = flag.Int("random", 0, "Write a random key to the keyfile")
-	emptyOK  = flag.Bool("empty-ok", false, "If true, an empty passphrase is allowed")
-)
+var flags struct {
+	EmptyOK bool `flag:"empty-ok,If true, an empty passphrase is allowed (not recommended)"`
+}
 
-func init() {
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, `Usage: %[1]s -get <keyfile-path>
-       %[1]s -set <key> <keyfile-path>
-       %[1]s -rekey <keyfile-path>
-
-Create, read, or modify the contents of a keyfile.
-
-With -get, read the current contents of the file and print them to stdout
-encoded as base64. Include -raw to write the contents without encoding.
-
-With -set, create or replace the file with the specified key.
-- If key has the prefix "#x" it is treated as a string of hexadecimal digits.
-- If key has the prefix "@" it is treated as a base64 string.
-- If key is the string "-" the key is read from stdin.
-Otherwise key is taken verbatim.
-
-With -rekey, rewrite the file with a new passphrase.
-
-Options:
-`, filepath.Base(os.Args[0]))
-		flag.PrintDefaults()
-	}
+var getFlags struct {
+	Raw bool `flag:"raw,Write key output as binary"`
 }
 
 func main() {
-	flag.Parse()
-	filePath := flag.Arg(0)
-	if filePath == "" {
-		log.Fatalf("You must specify a key file path; use '%s -help'",
-			filepath.Base(os.Args[0]))
-	} else if countOpts() > 1 {
-		log.Fatal("At most one of -read, -write, -random, and -rekey may be set")
+	root := &command.C{
+		Name:  command.ProgramName(),
+		Usage: "<command> [args]\nhelp [<command>]",
+		Help: `Create, read, or modify the contents of a keyfile.
+
+Keys can be specified in various formats:
+
+- The prefix "#x" indicates a string of hexadecimal digits (#x12ab).
+- The prefix "@" indcates a base64 string (@Eqs=).
+- The string "-" instructs the program to read the key from stdin.
+- Otherwise a key argument is taken verbatim.`,
+		SetFlags: command.Flags(flax.MustBind, &flags),
+
+		Commands: []*command.C{
+			{
+				Name:     "get",
+				Usage:    "<key-file>",
+				Help:     "Print the contents of the key file to stdout.",
+				SetFlags: command.Flags(flax.MustBind, &getFlags),
+				Run: command.Adapt(func(env *command.Env, keyFile string) error {
+					key, err := loadKeyFile("", keyFile)
+					if err != nil {
+						return err
+					}
+					if getFlags.Raw {
+						os.Stdout.Write(key)
+					} else {
+						fmt.Println(base64.StdEncoding.EncodeToString(key))
+					}
+					return nil
+				}),
+			}, {
+				Name:  "set",
+				Usage: "<key-file> <key>",
+				Help:  "Create or replace the contents of the key file with the given key.",
+				Run: command.Adapt(func(env *command.Env, keyFile, keySpec string) error {
+					key, err := decodeKey(keySpec)
+					if err != nil {
+						return fmt.Errorf("decoding key: %w", err)
+					}
+					kf, err := setKey("", key)
+					if err != nil {
+						return err
+					}
+					return saveKeyFile(keyFile, kf)
+				}),
+			}, {
+				Name:  "rekey",
+				Usage: "<key-file>",
+				Help:  "Change the passphrase on an existing key file.",
+				Run: command.Adapt(func(env *command.Env, keyFile string) error {
+					key, err := loadKeyFile("Old ", keyFile)
+					if err != nil {
+						return err
+					}
+					kf, err := setKey("New ", key)
+					if err != nil {
+						return err
+					}
+					return saveKeyFile(keyFile, kf)
+				}),
+			}, {
+				Name:  "random",
+				Usage: "<key-file> <n>",
+				Help:  "Write a randomly-generated key of n bytes to the key file.",
+				Run: command.Adapt(func(env *command.Env, keyFile, size string) error {
+					n, err := strconv.Atoi(size)
+					if err != nil {
+						return fmt.Errorf("invalid size: %w", err)
+					} else if n <= 0 {
+						return fmt.Errorf("n must be positive: %d", n)
+					}
+
+					kf := keyfile.New()
+					pp, err := getPassphrase("", true)
+					if err != nil {
+						return err
+					} else if _, err := kf.Random(pp, n); err != nil {
+						return fmt.Errorf("generate random key: %w", err)
+					}
+					return saveKeyFile(keyFile, kf)
+				}),
+			},
+			command.HelpCommand(nil),
+			command.VersionCommand(),
+		},
 	}
-	switch {
-	case *doGet:
-		key := mustReadKeyfile("", filePath)
-		if *doRaw {
-			os.Stdout.Write(key)
-		} else {
-			fmt.Println(base64.StdEncoding.EncodeToString(key))
-		}
-
-	case *doSet != "":
-		key, err := decodeKey(*doSet)
-		if err != nil {
-			log.Fatalf("Decoding key: %v", err)
-		}
-		mustWriteKeyFile(filePath, mustSetKey("", key))
-
-	case *doRekey:
-		old := mustReadKeyfile("Old ", filePath)
-		mustWriteKeyFile(filePath, mustSetKey("New ", old))
-
-	case *doRandom > 0:
-		kf := keyfile.New()
-		if _, err := kf.Random(mustPassphrase("", true), *doRandom); err != nil {
-			log.Fatalf("Generating random key: %v", err)
-		}
-		mustWriteKeyFile(filePath, kf)
-
-	default:
-		log.Fatal("No operation selected (use -get, -set, -random, or -rekey)")
-	}
+	command.RunOrFail(root.NewEnv(nil).MergeFlags(true), os.Args[1:])
 }
 
-func mustSetKey(tag string, key []byte) *keyfile.File {
+func setKey(tag string, key []byte) (*keyfile.File, error) {
 	kf := keyfile.New()
-	if err := kf.Set(mustPassphrase(tag, true), key); err != nil {
-		log.Fatalf("Encoding keyfile: %v", err)
-	}
-	return kf
-}
-
-func mustWriteKeyFile(path string, kf *keyfile.File) {
-	of, err := atomicfile.New(path, 0600)
+	pp, err := getPassphrase(tag, true)
 	if err != nil {
-		log.Fatalf("Creating output file: %v", err)
-	} else if _, err := of.Write(kf.Encode()); err != nil {
-		of.Cancel()
-		log.Fatalf("Writing output: %v", err)
-	} else if err := of.Close(); err != nil {
-		log.Fatalf("Closing output: %v", err)
+		return nil, err
 	}
+	if err := kf.Set(pp, key); err != nil {
+		return nil, err
+	}
+	return kf, nil
 }
 
-func mustReadKeyfile(tag, path string) []byte {
+func saveKeyFile(path string, kf *keyfile.File) error {
+	return atomicfile.Tx(path, 0600, func(f *atomicfile.File) error {
+		_, err := f.Write(kf.Encode())
+		return err
+	})
+}
+
+func loadKeyFile(tag, path string) ([]byte, error) {
 	key, err := keyfile.LoadKey(path, func() (string, error) {
-		return mustPassphrase(tag, false), nil
+		return getPassphrase(tag, false)
 	})
 	if err != nil {
-		log.Fatalf("Loading keyfile: %v", err)
+		return nil, fmt.Errorf("load key file: %w", err)
 	}
-	return key
+	return key, nil
 }
 
 func decodeKey(s string) ([]byte, error) {
@@ -134,36 +158,20 @@ func decodeKey(s string) ([]byte, error) {
 	return []byte(s), nil
 }
 
-func mustPassphrase(tag string, confirm bool) string {
+func getPassphrase(tag string, confirm bool) (string, error) {
 	pp, err := getpass.Prompt(tag + "Passphrase: ")
 	if err != nil {
-		log.Fatalf("Read passsphrase: %v", err)
-	} else if pp == "" && !*emptyOK {
-		log.Fatal("Empty passphrase")
+		return "", fmt.Errorf("read passphrase: %w", err)
+	} else if pp == "" && flags.EmptyOK {
+		return "", errors.New("empty passphrase")
 	}
 	if confirm {
 		cf, err := getpass.Prompt("Confirm " + tag + "passphrase: ")
 		if err != nil {
-			log.Fatalf("Read confirmation: %v", err)
+			return "", fmt.Errorf("read confirmation: %w", err)
 		} else if cf != pp {
-			log.Fatal("Passphrases do not match")
+			return "", errors.New("passphrases do not match")
 		}
 	}
-	return pp
-}
-
-func countOpts() (opts int) {
-	if *doGet {
-		opts++
-	}
-	if *doSet != "" {
-		opts++
-	}
-	if *doRekey {
-		opts++
-	}
-	if *doRandom > 0 {
-		opts++
-	}
-	return
+	return pp, nil
 }
