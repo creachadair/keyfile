@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"github.com/creachadair/flax"
 	"github.com/creachadair/getpass"
 	"github.com/creachadair/keyfile"
+	"golang.org/x/crypto/hkdf"
 	"golang.org/x/sys/unix"
 )
 
@@ -98,11 +100,9 @@ Keys can be specified in various formats:
 				Usage: "<key-file> <n>",
 				Help:  "Write a randomly-generated key of n bytes to the key file.",
 				Run: command.Adapt(func(env *command.Env, keyFile, size string) error {
-					n, err := strconv.Atoi(size)
+					n, err := checkSize(size)
 					if err != nil {
-						return fmt.Errorf("invalid size: %w", err)
-					} else if n <= 0 {
-						return fmt.Errorf("n must be positive: %d", n)
+						return err
 					}
 
 					kf := keyfile.New()
@@ -111,6 +111,32 @@ Keys can be specified in various formats:
 						return err
 					} else if _, err := kf.Random(pp, n); err != nil {
 						return fmt.Errorf("generate random key: %w", err)
+					}
+					return saveKeyFile(keyFile, kf)
+				}),
+			}, {
+				Name:  "hkdf",
+				Usage: "<key-file> <salt> <n>",
+				Help:  "Write an HKDF (SHA256) key of n bytes to the key file.",
+				Run: command.Adapt(func(env *command.Env, keyFile, salt, size string) error {
+					n, err := checkSize(size)
+					if err != nil {
+						return err
+					} else if salt == "" {
+						return errors.New("empty key generation salt")
+					}
+
+					kf := keyfile.New()
+					pp, err := getPassphrase("", true)
+					if err != nil {
+						return err
+					}
+					h := hkdf.New(sha256.New, []byte(pp), []byte(salt), nil)
+					buf := make([]byte, n)
+					if _, err := io.ReadFull(h, buf); err != nil {
+						return err
+					} else if err := kf.Set(pp, buf); err != nil {
+						return err
 					}
 					return saveKeyFile(keyFile, kf)
 				}),
@@ -164,7 +190,7 @@ func loadKeyFile(tag, path string) ([]byte, error) {
 		return getPassphrase(tag, false)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("load key file: %w", err)
+		return nil, fmt.Errorf("load: %w", err)
 	}
 	return key, nil
 }
@@ -243,4 +269,14 @@ func offerKey(env *command.Env, pipeFile string, key []byte) error {
 		return fmt.Errorf("offering key: %w", err)
 	}
 	return nil
+}
+
+func checkSize(s string) (int, error) {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size: %w", err)
+	} else if n <= 0 {
+		return 0, errors.New("size must be positive")
+	}
+	return n, nil
 }
