@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/signal"
 	"strconv"
@@ -118,9 +119,9 @@ Keys can be specified in various formats:
 				Usage: "<key-file> <socket-path>",
 				Help: `Write the contents of a key file to a named pipe.
 
-After reading the key file, offer creates a named pipe at the given
-path. When the pipe is opened by a reader, it writes the key, then
-closes and removes the pipe.`,
+After reading the key file, offer opens a named pipe at the given path,
+creating it if necessary. When the pipe is opened by a reader, it writes
+the key, then closes (and, if created, removes) the pipe.`,
 
 				Run: command.Adapt(func(env *command.Env, keyFile, pipeFile string) error {
 					key, err := loadKeyFile("", keyFile)
@@ -198,22 +199,45 @@ func getPassphrase(tag string, confirm bool) (string, error) {
 }
 
 func offerKey(env *command.Env, pipeFile string, key []byte) error {
-	if err := unix.Mkfifo(pipeFile, 0600); err != nil {
+	fi, err := os.Stat(pipeFile)
+	if err == nil {
+		if fi.Mode().Type() != fs.ModeNamedPipe {
+			return fmt.Errorf("file %q exists and is not a pipe", pipeFile)
+		}
+		// The pipe already exists, use it as-is.
+	} else if err := unix.Mkfifo(pipeFile, 0600); err != nil {
 		return fmt.Errorf("create pipe: %w", err)
+	} else {
+		defer os.Remove(pipeFile)
+		// We created the pipe, clean it up when we're done.
 	}
-	defer os.Remove(pipeFile)
-	f, err := os.OpenFile(pipeFile, os.O_WRONLY, os.ModeNamedPipe)
-	if err != nil {
-		return fmt.Errorf("open pipe: %w", err)
-	}
-	done := make(chan struct{})
+
+	// Opening the pipe to write will block waiting for a reader.  If the
+	// context ends before we get one, unblock the open by opening our own
+	// reader.
+	ready := make(chan struct{})
 	go func() {
 		select {
-		case <-done:
 		case <-env.Context().Done():
+			f, err := os.Open(pipeFile)
+			if err == nil {
+				f.Close()
+			}
+		case <-ready:
+			return // we succeeded, no need to clean up
 		}
-		f.Close()
 	}()
+
+	f, err := os.OpenFile(pipeFile, os.O_WRONLY, fs.ModeNamedPipe)
+	if err != nil {
+		return fmt.Errorf("open pipe: %w", err)
+	} else if err := env.Context().Err(); err != nil {
+		f.Close()
+		return err
+	}
+	close(ready)
+
+	// Reaching here, we got a real reader.
 	_, werr := f.Write(key)
 	if err := errors.Join(werr, f.Close()); err != nil {
 		return fmt.Errorf("offering key: %w", err)
