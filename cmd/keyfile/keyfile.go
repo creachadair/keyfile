@@ -184,7 +184,7 @@ func getPassphrase(tag string, confirm bool) (string, error) {
 	pp, err := getpass.Prompt(tag + "Passphrase: ")
 	if err != nil {
 		return "", fmt.Errorf("read passphrase: %w", err)
-	} else if pp == "" && flags.EmptyOK {
+	} else if pp == "" && !flags.EmptyOK {
 		return "", errors.New("empty passphrase")
 	}
 	if confirm {
