@@ -11,7 +11,7 @@ require (
 	github.com/creachadair/getpass v0.2.2
 	github.com/creachadair/mds v0.24.0
 	github.com/google/go-cmp v0.7.0
-	golang.org/x/crypto v0.34.0
+	golang.org/x/crypto v0.35.0
 	golang.org/x/sys v0.30.0
 	honnef.co/go/tools v0.5.1
 )
