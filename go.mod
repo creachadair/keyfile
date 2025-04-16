@@ -1,8 +1,6 @@
 module github.com/creachadair/keyfile
 
-go 1.23.0
-
-toolchain go1.24.0
+go 1.24
 
 require (
 	github.com/creachadair/atomicfile v0.3.8
@@ -13,7 +11,6 @@ require (
 	github.com/google/go-cmp v0.7.0
 	golang.org/x/crypto v0.37.0
 	golang.org/x/sys v0.32.0
-	honnef.co/go/tools v0.5.1
 )
 
 require (
@@ -22,4 +19,7 @@ require (
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/term v0.31.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240531212143-b6235391adb3 // indirect
+	honnef.co/go/tools v0.5.1 // indirect
 )
+
+tool honnef.co/go/tools/staticcheck
