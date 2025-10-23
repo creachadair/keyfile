@@ -179,8 +179,8 @@ func setKey(tag string, key []byte) (*keyfile.File, error) {
 }
 
 func saveKeyFile(path string, kf *keyfile.File) error {
-	return atomicfile.Tx(path, 0600, func(f *atomicfile.File) error {
-		_, err := f.Write(kf.Encode())
+	return atomicfile.Tx(path, 0600, func(w io.Writer) error {
+		_, err := w.Write(kf.Encode())
 		return err
 	})
 }
